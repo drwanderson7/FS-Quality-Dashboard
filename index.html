@@ -1715,24 +1715,37 @@
 
             showToast('Building Value Stream Report…');
 
-            const [
-                lineCompImg, plantMonthlyImg,
+            let lineCompImg, plantMonthlyImg,
                 l1WeeklyImg, l1CatImg,
                 l2WeeklyImg, l2CatImg,
                 l3WeeklyImg, l3CatImg,
-                l4WeeklyImg, l4CatImg
-            ] = await Promise.all([
-                renderOffscreenChart('lineComp',     'All', tf, month),
-                renderOffscreenChart('monthlyTrend', 'All', tf, month),
-                renderOffscreenChart('weeklyTrend',  '1',   tf, month),
-                renderOffscreenChart('category',     '1',   tf, month),
-                renderOffscreenChart('weeklyTrend',  '2',   tf, month),
-                renderOffscreenChart('category',     '2',   tf, month),
-                renderOffscreenChart('weeklyTrend',  '3',   tf, month),
-                renderOffscreenChart('category',     '3',   tf, month),
-                renderOffscreenChart('weeklyTrend',  '4',   tf, month),
-                renderOffscreenChart('category',     '4',   tf, month),
-            ]);
+                l4WeeklyImg, l4CatImg;
+            try {
+                [
+                    lineCompImg, plantMonthlyImg,
+                    l1WeeklyImg, l1CatImg,
+                    l2WeeklyImg, l2CatImg,
+                    l3WeeklyImg, l3CatImg,
+                    l4WeeklyImg, l4CatImg
+                ] = await Promise.all([
+                    renderOffscreenChart('lineComp',     'All', tf, month),
+                    renderOffscreenChart('monthlyTrend', 'All', tf, month),
+                    renderOffscreenChart('weeklyTrend',  '1',   tf, month),
+                    renderOffscreenChart('category',     '1',   tf, month),
+                    renderOffscreenChart('weeklyTrend',  '2',   tf, month),
+                    renderOffscreenChart('category',     '2',   tf, month),
+                    renderOffscreenChart('weeklyTrend',  '3',   tf, month),
+                    renderOffscreenChart('category',     '3',   tf, month),
+                    renderOffscreenChart('weeklyTrend',  '4',   tf, month),
+                    renderOffscreenChart('category',     '4',   tf, month),
+                ]);
+            } catch(err) {
+                printWindow.document.open();
+                printWindow.document.write('<html><body style="font-family:sans-serif;padding:40px;color:#b91c1c;"><h2>Report Error</h2><pre style="background:#fef2f2;padding:16px;border-radius:8px;">' + err.stack + '</pre></body></html>');
+                printWindow.document.close();
+                showToast('Report error: ' + err.message, true);
+                return;
+            }
 
             function buildLineKpiRow(line) {
                 const kpi = getKpis(line);
