@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quality Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS for Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .drop-zone { transition: all 0.2s ease; }
+        .drop-zone.dragover { background-color: #eff6ff; border-color: #3b82f6; }
+        /* Custom scrollbar for raw data table */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 p-4 md:p-8">
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="appWrap" class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex items-center gap-4">
+                <div class="bg-blue-100 p-3 rounded-xl text-blue-600">
+                    <i data-lucide="bar-chart-2" class="w-8 h-8"></i>
+                </div>
+                <div>
+                    <h1 id="mainTitle" class="text-2xl font-bold text-slate-900">Plant Total Workmanship Defects</h1>
+                    <p id="subTitle" class="text-slate-500 font-medium">Performance Breakdown (2026 YTD)</p>
+                </div>
+            </div>
+            
+            <!-- Global Selectors -->
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <label for="lineSelector" class="text-sm font-bold text-slate-700 ml-1">Line:</label>
+                    <select id="lineSelector" onchange="changeLine(this.value)" class="bg-white border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 font-medium shadow-sm cursor-pointer outline-none">
+                        <option value="All">Plant Total</option>
+                        <option value="1">Line 1</option>
+                        <option value="2">Line 2</option>
+                        <option value="3">Line 3</option>
+                        <option value="4">Line 4</option>
+                    </select>
+                </div>
+                
+                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <label for="timeframeSelector" class="text-sm font-bold text-slate-700 ml-1">Timeframe:</label>
+                    <select id="timeframeSelector" onchange="changeTimeframe(this.value)" class="bg-white border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 font-medium shadow-sm cursor-pointer outline-none">
+                        <option value="2026">2026 YTD</option>
+                        <option value="6mo">Past 6 Months</option>
+                        <option value="2025">2025 Full Year</option>
+                        <option value="AllTime">All Time</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- Iframe Warning Banner -->
+        <div id="iframeWarning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-5 rounded-r-xl shadow-sm">
+            <div class="flex items-start">
+                <i data-lucide="alert-triangle" class="w-6 h-6 text-amber-600 mt-0.5 mr-3 flex-shrink-0"></i>
+                <div>
+                    <h3 class="text-base font-bold text-amber-900">Browser Security Restriction Detected</h3>
+                    <p class="text-sm text-amber-800 mt-1">You are viewing this inside a secure preview window, which blocks the dashboard from permanently linking to files on your hard drive. <strong>To enable the permanent "Auto-Sync" feature, please save this HTML file to your Desktop and double-click it to open it normally in Chrome or Edge.</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Zone -->
+        <div id="uploadCard" class="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 text-center">
+            <div id="dropZone" class="drop-zone border-2 border-dashed border-slate-300 rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50">
+                <i data-lucide="link" class="w-12 h-12 text-blue-500 mb-4"></i>
+                <p class="text-lg font-semibold text-slate-700 mb-1">Link Your Data to the Dashboard</p>
+                <p class="text-slate-500 mb-6 text-sm max-w-md mx-auto">Click below to link the <strong>Quality Issues.xlsx or .csv</strong> file. Once linked locally, you will never have to select this file again.</p>
+                
+                <input type="file" id="fileInput" accept=".csv, .xlsx, .xls" class="hidden" />
+                <button onclick="selectAndLinkFile()" class="bg-blue-600 hover:bg-blue-700 shadow-md text-white font-medium py-3 px-8 rounded-xl transition-colors flex items-center justify-center gap-2 mx-auto">
+                    <i data-lucide="folder-search" class="w-5 h-5"></i> Link Excel / CSV File
+                </button>
+            </div>
+            
+            <div id="loadingState" class="hidden py-8 flex-col items-center justify-center">
+                <i data-lucide="loader-2" class="w-10 h-10 text-blue-600 animate-spin mb-4"></i>
+                <p class="text-slate-600 font-medium">Processing your spreadsheet...</p>
+            </div>
+        </div>
+
+        <!-- Dashboard Content (Hidden by default) -->
+        <div id="dashboardContent" class="hidden space-y-6">
+
+            <!-- Controls Row -->
+            <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <!-- Month Filter for Detailed Charts -->
+                <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 px-3">
+                    <i data-lucide="calendar" class="w-4 h-4 text-slate-500"></i>
+                    <label for="monthSelector" class="text-sm font-bold text-slate-700">Filter Detail Charts By Month:</label>
+                    <select id="monthSelector" onchange="changeMonth(this.value)" class="bg-transparent text-slate-900 text-sm font-semibold cursor-pointer outline-none ml-1">
+                        <!-- Options are now dynamically generated by Javascript -->
+                        <option value="All">All Months in Timeframe</option>
+                    </select>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="openOverrideModal()" class="text-sm font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                        <i data-lucide="clipboard-edit" class="w-4 h-4"></i> Monthly Production Counts
+                    </button>
+                    <button id="syncDataBtn" onclick="syncLatestData()" class="hidden text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Latest Data
+                    </button>
+                    <button onclick="prepareAndPrint()" class="text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                        <i data-lucide="printer" class="w-4 h-4"></i> Full Page Report
+                    </button>
+                    <button onclick="openReportBuilder()" class="text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                        <i data-lucide="sliders" class="w-4 h-4"></i> Custom Report
+                    </button>
+                    <button onclick="resetApp()" class="text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 py-2 px-4 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
+                        <i data-lucide="folder-open" class="w-4 h-4"></i> Link New File
+                    </button>
+                </div>
+            </div>
+
+            <!-- Row 1: Weekly & Monthly Trends -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Weekly Trend -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-md font-bold text-slate-900">Weekly Trend Report</h2>
+                        <button onclick="downloadChart('defectsChart', 'Weekly_Trend')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <!-- Mini YoY KPI Strip (line-context aware) -->
+                    <div id="weeklyKpiStrip" class="grid grid-cols-3 gap-2 mb-4"></div>
+                    <div class="relative h-[300px] w-full">
+                        <canvas id="defectsChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Monthly Trend -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-md font-bold text-slate-900">Monthly Trend Report</h2>
+                        <button onclick="downloadChart('monthlyChart', 'Monthly_Trend')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="relative h-[300px] w-full">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 1.5: Cross-Line Comparison + Full YoY KPIs -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-md font-bold text-slate-900">Line vs. Line Comparison (Defects / Trailer)</h2>
+                    <button onclick="downloadChart('lineCompChart', 'Line_Comparison')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                </div>
+
+                <!-- Full YoY KPI Cards — plant-level, always 2026 vs 2025 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+
+                    <!-- Card 1: Weld -->
+                    <div class="bg-orange-50 border border-orange-100 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="bg-orange-100 p-1.5 rounded-lg text-orange-600 flex-shrink-0">
+                                <i data-lucide="zap" class="w-4 h-4"></i>
+                            </div>
+                            <p class="text-xs text-slate-600 font-semibold leading-tight">Missed + Rejected Welds / Trailer</p>
+                        </div>
+                        <div class="flex items-end justify-between gap-2">
+                            <div>
+                                <p id="kpiWeld26Label" class="text-xs text-slate-400 mb-0.5">2026 YTD</p>
+                                <p id="kpiWeld26" class="text-xl font-bold text-slate-900">—</p>
+                            </div>
+                            <div class="text-right">
+                                <p id="kpiWeld25Label" class="text-xs text-slate-400 mb-0.5">2025</p>
+                                <p id="kpiWeld25" class="text-base font-bold text-slate-500">—</p>
+                            </div>
+                        </div>
+                        <div class="mt-2 flex items-center gap-2 flex-wrap">
+                            <span id="yoyWeldBadge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full"></span>
+                            <p id="yoyWeldLabel" class="text-xs text-slate-400"></p>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Finishing -->
+                    <div class="bg-violet-50 border border-violet-100 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="bg-violet-100 p-1.5 rounded-lg text-violet-600 flex-shrink-0">
+                                <i data-lucide="paint-bucket" class="w-4 h-4"></i>
+                            </div>
+                            <p class="text-xs text-slate-600 font-semibold leading-tight">Finishing Defects / Trailer</p>
+                        </div>
+                        <div class="flex items-end justify-between gap-2">
+                            <div>
+                                <p id="kpiFinish26Label" class="text-xs text-slate-400 mb-0.5">2026 YTD</p>
+                                <p id="kpiFinish26" class="text-xl font-bold text-slate-900">—</p>
+                            </div>
+                            <div class="text-right">
+                                <p id="kpiFinish25Label" class="text-xs text-slate-400 mb-0.5">2025</p>
+                                <p id="kpiFinish25" class="text-base font-bold text-slate-500">—</p>
+                            </div>
+                        </div>
+                        <div class="mt-2 flex items-center gap-2 flex-wrap">
+                            <span id="yoyFinishBadge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full"></span>
+                            <p id="yoyFinishLabel" class="text-xs text-slate-400"></p>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Overall -->
+                    <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="bg-emerald-100 p-1.5 rounded-lg text-emerald-600 flex-shrink-0">
+                                <i data-lucide="activity" class="w-4 h-4"></i>
+                            </div>
+                            <p class="text-xs text-slate-600 font-semibold leading-tight">Overall Avg Defects / Trailer</p>
+                        </div>
+                        <div class="flex items-end justify-between gap-2">
+                            <div>
+                                <p class="text-xs text-slate-400 mb-0.5">2026 YTD</p>
+                                <p id="kpiAvgDefects" class="text-xl font-bold text-slate-900">—</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-xs text-slate-400 mb-0.5">2025</p>
+                                <p id="kpiAvg25" class="text-base font-bold text-slate-500">—</p>
+                            </div>
+                        </div>
+                        <div class="mt-2 flex items-center gap-2 flex-wrap">
+                            <span id="yoyAvgBadge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full"></span>
+                            <p id="yoyAvgLabel" class="text-xs text-slate-400"></p>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Line Insight Strip removed per user request -->
+                <div id="lineInsightStrip" class="hidden"></div>
+
+                <div class="relative h-[300px] w-full">
+                    <canvas id="lineCompChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Row 2: Category & Operators -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Category Breakdown -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-md font-bold text-slate-900">Defects per Trailer by Category</h2>
+                        <button onclick="downloadChart('categoryChart', 'Category_Breakdown')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="relative h-[300px] w-full">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Operator Pareto -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-md font-bold text-slate-900">Top 10 Responsible Operators</h2>
+                        <button onclick="downloadChart('operatorChart', 'Top_Operators')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="relative h-[300px] w-full">
+                        <canvas id="operatorChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 3: Location Donuts -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Section of Line -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-md font-bold text-slate-900">Defects by Section of Line</h2>
+                        <button onclick="downloadChart('sectionChart', 'Section_Breakdown')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="relative h-[280px] w-full flex justify-center">
+                        <canvas id="sectionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Location on Trailer -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-md font-bold text-slate-900">Defects by Location on Trailer</h2>
+                        <button onclick="downloadChart('locationChart', 'Location_Breakdown')" class="text-xs text-slate-500 hover:text-slate-900"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                    <div class="relative h-[280px] w-full flex justify-center">
+                        <canvas id="locationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Data Table -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+                <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-slate-50">
+                    <h3 class="font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="list-filter" class="w-5 h-5 text-blue-600"></i>
+                        Raw Issue Log
+                    </h3>
+                    <div class="relative w-full sm:w-64">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
+                        </div>
+                        <input type="text" id="rawSearch" oninput="filterRawData()" placeholder="Search logs..." class="pl-9 bg-white border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2 shadow-sm outline-none">
+                    </div>
+                </div>
+                <div class="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar">
+                    <table class="w-full text-left text-sm text-slate-600 relative">
+                        <thead class="bg-slate-100 text-slate-500 font-medium sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="px-6 py-3 whitespace-nowrap">Date / Week</th>
+                                <th class="px-6 py-3">Serial #</th>
+                                <th class="px-6 py-3">Defect</th>
+                                <th class="px-6 py-3">Section / Location</th>
+                                <th class="px-6 py-3">Operator</th>
+                                <th class="px-6 py-3 w-1/3">Comments</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rawDataTableBody" class="divide-y divide-slate-100 bg-white">
+                            <!-- Table rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Override Trailer Counts Modal -->
+    <div id="overrideModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div class="flex items-center gap-3">
+                    <div class="bg-purple-100 p-2 rounded-lg text-purple-600">
+                        <i data-lucide="clipboard-edit" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-900">Override Monthly Production Counts</h3>
+                        <p class="text-xs text-slate-500 font-medium">Input true trailer counts to include defect-free trailers in averages.</p>
+                    </div>
+                </div>
+                <button onclick="closeOverrideModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar">
+                <table class="w-full text-left text-sm text-slate-600 border border-slate-200 rounded-lg">
+                    <thead class="bg-slate-100 border-b border-slate-200 text-slate-700">
+                        <tr>
+                            <th class="p-3 font-bold">Month / Year</th>
+                            <th class="p-3 font-bold">Line 1</th>
+                            <th class="p-3 font-bold">Line 2</th>
+                            <th class="p-3 font-bold">Line 3</th>
+                            <th class="p-3 font-bold">Line 4</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overrideTableBody" class="divide-y divide-slate-100">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                <button onclick="closeOverrideModal()" class="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors shadow-sm border border-slate-200 bg-white">Cancel</button>
+                <button onclick="saveOverrides()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 transition-colors shadow-md">Save True Counts</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== CUSTOM REPORT BUILDER MODAL ===== -->
+    <div id="reportBuilderModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
+
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <div class="flex items-center gap-3">
+                    <div class="bg-indigo-100 p-2 rounded-lg text-indigo-600">
+                        <i data-lucide="sliders" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-900">Custom Report Builder</h3>
+                        <p class="text-xs text-slate-500 font-medium">Choose exactly what goes into your printed report.</p>
+                    </div>
+                </div>
+                <button onclick="closeReportBuilder()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto custom-scrollbar space-y-6">
+
+                <!-- Report Title -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1.5">Report Title</label>
+                    <input type="text" id="rptTitle" placeholder="e.g. Weekly Line Performance Review – March 2026"
+                        class="w-full border border-slate-300 rounded-xl p-3 text-slate-900 text-sm font-medium focus:ring-indigo-500 focus:border-indigo-500 outline-none shadow-sm" />
+                </div>
+
+                <!-- Preset Templates -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Quick Presets</label>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="applyPreset('weekly')" class="preset-btn text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors">
+                            📈 Weekly Trend Focus
+                        </button>
+                        <button onclick="applyPreset('comparison')" class="preset-btn text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg transition-colors">
+                            ⚖️ Plant Line Comparison
+                        </button>
+                        <button onclick="applyPreset('full')" class="preset-btn text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                            📋 Full Report
+                        </button>
+                        <button onclick="applyPreset('none')" class="preset-btn text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors">
+                            ✕ Clear All
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Line Selection -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Lines to Include in Report</label>
+                    <div class="flex flex-wrap gap-2" id="rptLineToggles">
+                        <button data-line="All" onclick="toggleRptLine(this)" class="rpt-line-btn active text-xs font-bold border px-3 py-1.5 rounded-lg transition-colors">Plant Total</button>
+                        <button data-line="1"   onclick="toggleRptLine(this)" class="rpt-line-btn text-xs font-bold border px-3 py-1.5 rounded-lg transition-colors">Line 1</button>
+                        <button data-line="2"   onclick="toggleRptLine(this)" class="rpt-line-btn text-xs font-bold border px-3 py-1.5 rounded-lg transition-colors">Line 2</button>
+                        <button data-line="3"   onclick="toggleRptLine(this)" class="rpt-line-btn text-xs font-bold border px-3 py-1.5 rounded-lg transition-colors">Line 3</button>
+                        <button data-line="4"   onclick="toggleRptLine(this)" class="rpt-line-btn text-xs font-bold border px-3 py-1.5 rounded-lg transition-colors">Line 4</button>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1.5">Each selected line gets its own weekly trend section.</p>
+                </div>
+
+                <!-- Per-Line Chart Selectors -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-1">Charts Per Line / Section</label>
+                    <p class="text-xs text-slate-400 mb-3">Expand each section to customize its charts independently.</p>
+                    <div id="perLineAccordion" class="space-y-2">
+                        <!-- Dynamically built from selectedReportLines when modal opens -->
+                    </div>
+                </div>
+
+                <!-- Plant-Wide Charts (always shown as a separate section) -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Plant-Wide Charts</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                            <input type="checkbox" class="plant-chart-check w-4 h-4 accent-indigo-600" data-chart="lineComp" checked />
+                            <div>
+                                <p class="text-sm font-semibold text-slate-800">Line vs. Line Comparison</p>
+                                <p class="text-xs text-slate-400">Plant-wide bar + insight stats</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Orientation -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Page Orientation</label>
+                    <div class="flex gap-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="rptOrientation" value="landscape" checked class="accent-indigo-600" />
+                            <span class="text-sm font-medium text-slate-700">Landscape</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="rptOrientation" value="portrait" class="accent-indigo-600" />
+                            <span class="text-sm font-medium text-slate-700">Portrait</span>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                <button onclick="closeReportBuilder()" class="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors shadow-sm border border-slate-200 bg-white">Cancel</button>
+                <button onclick="generateCustomReport()" class="px-5 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-md flex items-center gap-2">
+                    <i data-lucide="printer" class="w-4 h-4"></i> Generate Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Line toggle button states */
+        .rpt-line-btn { background: white; color: #64748b; border-color: #cbd5e1; }
+        .rpt-line-btn.active { background: #eef2ff; color: #4338ca; border-color: #a5b4fc; }
+        .rpt-line-btn:hover:not(.active) { background: #f8fafc; }
+    </style>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Custom Notification Toast Function
+        function showToast(message, isError = false) {
+            const existing = document.getElementById('customToast');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.id = 'customToast';
+            toast.className = `fixed bottom-6 right-6 px-6 py-4 rounded-xl shadow-2xl z-50 text-sm font-bold flex items-center gap-3 transition-all duration-300 translate-y-4 opacity-0 ${isError ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'}`;
+            
+            toast.innerHTML = `
+                <i data-lucide="${isError ? 'alert-circle' : 'check-circle'}" class="w-5 h-5"></i>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            lucide.createIcons();
+
+            requestAnimationFrame(() => toast.classList.remove('translate-y-4', 'opacity-0'));
+            setTimeout(() => {
+                toast.classList.add('translate-y-4', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Global Chart Instances
+        let myChart = null;
+        let monthlyChart = null;
+        let lineCompChart = null;
+        let catChart = null;
+        let operatorChart = null;
+        let sectionChart = null;
+        let locationChart = null;
+        
+        let fileHandle = null;
+        let globalData = [];
+        let currentLine = 'All';
+        let currentMonth = 'All';
+        let currentTimeframe = '2026';
+
+        // Override Data Structures
+        let trailerOverrides = {};
+        let monthLineSerials = {};
+
+        // Expanded Month Mapping to catch numbers, abbreviations, and typos
+        const monthMap = { 
+            'january':'01', 'february':'02', 'march':'03', 'april':'04', 'may':'05', 'june':'06', 
+            'july':'07', 'august':'08', 'september':'09', 'october':'10', 'november':'11', 'december':'12', 
+            'jan':'01', 'feb':'02', 'mar':'03', 'apr':'04', 'jun':'06', 'jul':'07', 'aug':'08', 
+            'sep':'09', 'sept':'09', 'oct':'10', 'nov':'11', 'dec':'12',
+            '1':'01', '2':'02', '3':'03', '4':'04', '5':'05', '6':'06', '7':'07', '8':'08', '9':'09', '10':'10', '11':'11', '12':'12',
+            '01':'01', '02':'02', '03':'03', '04':'04', '05':'05', '06':'06', '07':'07', '08':'08', '09':'09'
+        };
+        const monthNamesRev = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        function getYYYYMM(row) {
+            // Month + Year columns are the authoritative source when both are present
+            let yRaw = String(row['Year'] || '').replace(/,/g, '').trim();
+            let y = parseInt(yRaw, 10);
+            let mStr = String(row['Month'] || '').trim().toLowerCase();
+            let mNum = monthMap[mStr];
+            if (!isNaN(y) && y > 2000 && mNum) {
+                return `${y}-${mNum}`;
+            }
+            // Fall back to Date column if Month/Year not usable
+            let dVal = row['Date'];
+            if (dVal) {
+                let dStr = String(dVal).trim();
+                let m1 = dStr.match(/^(\d{4})-(\d{2})/);
+                if (m1) return `${m1[1]}-${m1[2]}`;
+                let m2 = dStr.match(/^(\d{1,2})\/\d{1,2}\/(\d{4})/);
+                if (m2) return `${m2[2]}-${m2[1].padStart(2, '0')}`;
+                let serial = Number(dStr);
+                if (!isNaN(serial) && serial > 30000 && serial < 60000) {
+                    let d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+                    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+                }
+            }
+            return null;
+        }
+
+        function getTrailerCount(ym, line) {
+            if (trailerOverrides[ym] && trailerOverrides[ym][line] !== undefined && trailerOverrides[ym][line] !== '') {
+                return Number(trailerOverrides[ym][line]);
+            }
+            return monthLineSerials[ym] && monthLineSerials[ym][line] ? monthLineSerials[ym][line].size : 0;
+        }
+
+        // Vibrant Color Palette for Donuts
+        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16', '#64748b'];
+
+        // Line-specific styling and benchmarks
+        // Single source of truth for all 2025 reference values (hardcoded)
+        const lineConfig = {
+            'All': { bg: 'rgba(71, 85, 105, 0.8)', border: 'rgb(51, 65, 85)', avg: 6.8,  weld: 3.77, finish: 2.42 },
+            '1':   { bg: 'rgba(0, 0, 0, 0.8)',     border: 'rgb(0, 0, 0)',     avg: 4.8,  weld: 1.92, finish: 2.42 },
+            '2':   { bg: 'rgba(249, 115, 22, 0.8)', border: 'rgb(234, 88, 12)',avg: 7.7,  weld: 3.48, finish: 2.43 },
+            '3':   { bg: 'rgba(59, 130, 246, 0.8)', border: 'rgb(37, 99, 235)',avg: 6.7,  weld: 4.23, finish: 2.63 },
+            '4':   { bg: 'rgba(34, 197, 94, 0.8)',  border: 'rgb(22, 163, 74)', avg: 7.8,  weld: 5.18, finish: 2.33 }
+        };
+
+        const whiteBackgroundPlugin = {
+            id: 'customCanvasBackgroundColor',
+            beforeDraw: (chart, args, options) => {
+                const {ctx} = chart;
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+            }
+        };
+
+        if (window.self !== window.top) {
+            document.getElementById('iframeWarning').classList.remove('hidden');
+        }
+
+        // ----- UI INTERACTIONS ----- //
+        function changeLine(line) {
+            currentLine = line;
+            document.getElementById('mainTitle').innerText = line === 'All' ? 'Plant Total Workmanship Defects' : `Line ${line} Workmanship Defects`;
+            if (globalData.length > 0) processData(globalData);
+        }
+
+        function changeTimeframe(tf) {
+            currentTimeframe = tf;
+            const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+            document.getElementById('subTitle').innerText = `Performance Breakdown (${tfLabels[currentTimeframe]})`;
+            if (globalData.length > 0) processData(globalData);
+        }
+
+        function changeMonth(month) {
+            currentMonth = month;
+            if (globalData.length > 0) processData(globalData);
+        }
+
+        function filterRawData() {
+            const searchTerm = document.getElementById('rawSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#rawDataTableBody tr');
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchTerm) ? '' : 'none';
+            });
+        }
+
+        // ----- OVERRIDE MODAL LOGIC ----- //
+        function openOverrideModal() {
+            const tbody = document.getElementById('overrideTableBody');
+            tbody.innerHTML = '';
+            
+            let allMonths = new Set();
+            globalData.forEach(r => { let ym = getYYYYMM(r); if(ym) allMonths.add(ym); });
+            let sorted = Array.from(allMonths).sort().reverse();
+
+            if (sorted.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500">Please load data before editing overrides.</td></tr>`;
+            }
+
+            sorted.forEach(ym => {
+                let y = ym.split('-')[0];
+                let mIndex = parseInt(ym.split('-')[1], 10) - 1;
+                let label = `${monthNamesRev[mIndex]} ${y}`;
+
+                let r = document.createElement('tr');
+                r.className = 'hover:bg-slate-50 transition-colors';
+                
+                let html = `<td class="p-3 font-bold text-slate-800">${label}</td>`;
+                ['1','2','3','4'].forEach(l => {
+                    let val = (trailerOverrides[ym] && trailerOverrides[ym][l] !== undefined) ? trailerOverrides[ym][l] : '';
+                    let placeholder = monthLineSerials[ym] && monthLineSerials[ym][l] ? monthLineSerials[ym][l].size : 0;
+                    html += `<td class="p-3"><input type="number" min="0" id="ov_${ym}_${l}" value="${val}" placeholder="Detected: ${placeholder}" class="w-full p-2 border border-slate-300 rounded-lg text-slate-900 text-sm font-medium focus:ring-purple-500 focus:border-purple-500 outline-none"></td>`;
+                });
+                r.innerHTML = html;
+                tbody.appendChild(r);
+            });
+            
+            document.getElementById('overrideModal').classList.remove('hidden');
+        }
+
+        function closeOverrideModal() {
+            document.getElementById('overrideModal').classList.add('hidden');
+        }
+
+        async function saveOverrides() {
+            let allMonths = new Set();
+            globalData.forEach(r => { let ym = getYYYYMM(r); if(ym) allMonths.add(ym); });
+            
+            allMonths.forEach(ym => {
+                if (!trailerOverrides[ym]) trailerOverrides[ym] = {};
+                ['1','2','3','4'].forEach(l => {
+                    let el = document.getElementById(`ov_${ym}_${l}`);
+                    if (el) {
+                        let val = el.value.trim();
+                        if (val !== '') trailerOverrides[ym][l] = Number(val);
+                        else delete trailerOverrides[ym][l];
+                    }
+                });
+            });
+
+            await saveToDatabase('trailerOverrides', trailerOverrides);
+            closeOverrideModal();
+            showToast("Production counts saved and charts updated!");
+            if (globalData.length > 0) processData(globalData);
+        }
+
+        // ----- FILE SYSTEM & DB LOGIC ----- //
+        const DB_NAME = 'QualityDashboardDB_V4';
+        const STORE_NAME = 'FileCache';
+
+        function getDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onupgradeneeded = (e) => e.target.result.createObjectStore(STORE_NAME);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function saveToDatabase(key, value) {
+            try {
+                const db = await getDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).put(value, key);
+            } catch(e) { console.warn("Could not save to IndexedDB.", e); }
+        }
+
+        async function loadFromDatabase(key) {
+            try {
+                const db = await getDB();
+                return new Promise(resolve => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const req = tx.objectStore(STORE_NAME).get(key);
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => resolve(null);
+                });
+            } catch(e) { return null; }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Load overrides first
+            const savedOverrides = await loadFromDatabase('trailerOverrides');
+            if (savedOverrides) trailerOverrides = savedOverrides;
+
+            const cachedData = await loadFromDatabase('cachedFilteredData');
+            if (cachedData && cachedData.length > 0) processData(cachedData);
+
+            const handle = await loadFromDatabase('latestFileHandle');
+            if (handle) {
+                fileHandle = handle;
+                document.getElementById('syncDataBtn').classList.remove('hidden');
+            }
+        });
+
+        async function selectAndLinkFile() {
+            if ('showOpenFilePicker' in window && window.self === window.top) {
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{ description: 'Spreadsheets', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'], 'text/csv': ['.csv'] } }]
+                    });
+                    fileHandle = handle;
+                    await saveToDatabase('latestFileHandle', handle);
+                    const file = await handle.getFile();
+                    handleFile(file);
+                    document.getElementById('syncDataBtn').classList.remove('hidden');
+                    return;
+                } catch (e) {
+                    if (e.name === 'AbortError') return;
+                    console.warn("File API error, falling back.", e);
+                }
+            }
+            document.getElementById('fileInput').click();
+        }
+
+        async function syncLatestData() {
+            if (!fileHandle) return;
+            try {
+                const syncBtn = document.getElementById('syncDataBtn');
+                syncBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Syncing...`;
+                lucide.createIcons();
+
+                const opts = { mode: 'read' };
+                if ((await fileHandle.queryPermission(opts)) !== 'granted') {
+                    if ((await fileHandle.requestPermission(opts)) !== 'granted') throw new Error("Permission denied.");
+                }
+                const file = await fileHandle.getFile();
+                handleFile(file);
+
+                setTimeout(() => {
+                    syncBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Synced!`;
+                    lucide.createIcons();
+                    setTimeout(() => {
+                        syncBtn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Latest Data`;
+                        lucide.createIcons();
+                    }, 2000);
+                }, 500);
+            } catch (error) {
+                showToast("Browser blocked auto-sync. Please link file manually.", true);
+                document.getElementById('syncDataBtn').innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4"></i> Sync Latest Data`;
+                lucide.createIcons();
+            }
+        }
+
+        const fileInput = document.getElementById('fileInput');
+        fileInput.addEventListener('change', function() { if (this.files.length) handleFile(this.files[0]); });
+
+        async function resetApp() {
+            try {
+                const db = await getDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).delete('cachedFilteredData');
+            } catch(e){}
+            
+            globalData = [];
+            document.getElementById('dashboardContent').classList.add('hidden');
+            document.getElementById('uploadCard').classList.remove('hidden');
+            resetCharts();
+            fileInput.value = "";
+        }
+
+        // ----- DATA PROCESSING ----- //
+        function handleFile(file) {
+            const fileName = file.name.toLowerCase();
+            const isCSV = fileName.endsWith('.csv');
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+            if (!isCSV && !isExcel) {
+                showToast('Please link a valid Excel (.xlsx, .xls) or CSV file.', true);
+                return;
+            }
+
+            document.getElementById('dropZone').classList.add('hidden');
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('loadingState').classList.add('flex');
+
+            if (isCSV) {
+                Papa.parse(file, {
+                    header: true, skipEmptyLines: true,
+                    complete: function(results) { filterAndProcessData(results.data); },
+                    error: function(err) { showToast('Error parsing CSV: ' + err.message, true); resetApp(); }
+                });
+            } else {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+                        let targetSheetName = workbook.SheetNames[0];
+                        const preferredSheet = workbook.SheetNames.find(s => s.trim().toLowerCase() === 'quality issues');
+                        if (preferredSheet) targetSheetName = preferredSheet;
+                        
+                        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[targetSheetName], { defval: "" });
+                        filterAndProcessData(jsonData);
+                    } catch (err) { showToast('Error reading Excel: ' + err.message, true); resetApp(); }
+                };
+                reader.onerror = () => { showToast('Error reading file.', true); resetApp(); };
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        function filterAndProcessData(data) {
+            const allowedLines = ['1', '2', '3', '4'];
+            const filteredData = data.filter(row => {
+                const line = String(row['Line'] || '').trim();
+                const category = String(row['Quality Category'] || '').trim();
+                // Filter globally to just workmanship & valid lines
+                return allowedLines.includes(line) && category === 'Workmanship';
+            });
+            saveToDatabase('cachedFilteredData', filteredData);
+            processData(filteredData);
+        }
+
+        function processData(data) {
+            globalData = data;
+            
+            // Build base dictionaries for the exact detected serials
+            monthLineSerials = {};
+            data.forEach(r => {
+                let ym = getYYYYMM(r);
+                let l = String(r['Line'] || '').trim();
+                let s = String(r['Serial #'] || '').trim();
+                if (ym && ['1','2','3','4'].includes(l) && s) {
+                    if (!monthLineSerials[ym]) monthLineSerials[ym] = { '1': new Set(), '2': new Set(), '3': new Set(), '4': new Set() };
+                    monthLineSerials[ym][l].add(s);
+                }
+            });
+
+            // 1. Isolate Timeframe safely ON ALL LINES (So the Month dropdown stays stable plant-wide)
+            let tfAllLinesData = [];
+            if (currentTimeframe === '2026') {
+                tfAllLinesData = data.filter(r => {
+                    let yStr = String(r['Year'] || '').trim();
+                    let ym = getYYYYMM(r);
+                    return yStr === '2026' || (ym && ym.startsWith('2026'));
+                });
+            } else if (currentTimeframe === '2025') {
+                tfAllLinesData = data.filter(r => {
+                    let yStr = String(r['Year'] || '').trim();
+                    let ym = getYYYYMM(r);
+                    return yStr === '2025' || (ym && ym.startsWith('2025'));
+                });
+            } else if (currentTimeframe === '6mo') {
+                let maxYM = "0000-00";
+                const currentYear = new Date().getFullYear();
+                
+                data.forEach(r => {
+                    let ym = getYYYYMM(r);
+                    if (ym) {
+                        let y = parseInt(ym.split('-')[0], 10);
+                        if (y <= currentYear + 1 && ym > maxYM) {
+                            maxYM = ym;
+                        }
+                    }
+                });
+
+                if (maxYM !== "0000-00") {
+                    let maxYear = parseInt(maxYM.split('-')[0], 10);
+                    let maxMonth = parseInt(maxYM.split('-')[1], 10);
+
+                    let targetMonths = new Set();
+                    for (let i = 0; i < 6; i++) {
+                        let y = maxYear;
+                        let m = maxMonth - i;
+                        if (m <= 0) {
+                            m += 12;
+                            y -= 1;
+                        }
+                        let ymStr = `${y}-${String(m).padStart(2, '0')}`;
+                        targetMonths.add(ymStr);
+                    }
+
+                    tfAllLinesData = data.filter(r => {
+                        let ym = getYYYYMM(r);
+                        return ym && targetMonths.has(ym);
+                    });
+                }
+            } else {
+                tfAllLinesData = data;
+            }
+
+            // 2. Dynamically build the Detail Month Dropdown from the Timeframe dataset
+            let availableMonths = new Set();
+            tfAllLinesData.forEach(r => {
+                let ym = getYYYYMM(r);
+                if (ym) availableMonths.add(ym);
+            });
+            let sortedAvailable = Array.from(availableMonths).sort().reverse(); 
+
+            const monthSelect = document.getElementById('monthSelector');
+            monthSelect.innerHTML = '<option value="All">All Months in Timeframe</option>';
+            
+            sortedAvailable.forEach(ym => {
+                let y = ym.split('-')[0];
+                let mIndex = parseInt(ym.split('-')[1], 10) - 1;
+                let label = `${monthNamesRev[mIndex]} ${y}`; // e.g. "Feb 2026"
+                
+                let opt = document.createElement('option');
+                opt.value = ym;
+                opt.textContent = label;
+                monthSelect.appendChild(opt);
+            });
+
+            if (sortedAvailable.includes(currentMonth)) {
+                monthSelect.value = currentMonth;
+            } else {
+                currentMonth = 'All';
+                monthSelect.value = 'All';
+            }
+
+            // 3. Filter by Selected Line for Specific Trend Charts & KPIs
+            const lineData = currentLine === 'All' ? tfAllLinesData : tfAllLinesData.filter(row => String(row['Line'] || '').trim() === currentLine);
+
+            const weeklyStats = {};
+            const monthlyStats = {};
+            let overallDefects = 0;
+
+            lineData.forEach(row => {
+                const week = parseInt(row['Week'], 10);
+                const qty = parseFloat(row['Qty.']) || 1;
+                const serial = String(row['Serial #'] || '').trim();
+                
+                if (!isNaN(week)) {
+                    const yearStr = String(row['Year'] || '0000').trim();
+                    const weekKey = `${yearStr}-W${String(week).padStart(2, '0')}`;
+                    if (!weeklyStats[weekKey]) weeklyStats[weekKey] = { label: `Week ${week} (${yearStr.slice(-2)})`, defects: 0, serials: new Set() };
+                    weeklyStats[weekKey].defects += qty;
+                    if (serial) weeklyStats[weekKey].serials.add(serial);
+                }
+
+                let ym = getYYYYMM(row);
+                if (ym) {
+                    let y = ym.split('-')[0];
+                    let mIndex = parseInt(ym.split('-')[1], 10) - 1;
+                    let mLabel = `${monthNamesRev[mIndex]} '${y.slice(-2)}`;
+
+                    if (!monthlyStats[ym]) monthlyStats[ym] = { label: mLabel, defects: 0, serials: new Set() };
+                    monthlyStats[ym].defects += qty;
+                    if (serial) monthlyStats[ym].serials.add(serial);
+                }
+
+                overallDefects += qty;
+            });
+
+            // Handle Empty States
+            if (Object.keys(weeklyStats).length === 0 && tfAllLinesData.length === 0) {
+                ['kpiWeld26','kpiWeld25','kpiFinish26','kpiFinish25','kpiAvgDefects','kpiAvg25'].forEach(id => { const el=document.getElementById(id); if(el) el.innerText='—'; });
+                ['yoyWeldBadge','yoyFinishBadge','yoyAvgBadge'].forEach(id => { const el=document.getElementById(id); if(el) el.classList.add('hidden'); });
+                const strip = document.getElementById('weeklyKpiStrip'); if (strip) strip.innerHTML = '';
+                const emptyText = currentLine === 'All' ? 'the Plant' : `Line ${currentLine}`;
+                document.getElementById('rawDataTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-4 text-center text-slate-500">No Workmanship data found for ${emptyText} in the selected timeframe.</td></tr>`;
+                resetCharts();
+                showAppUI();
+                return;
+            }
+
+            // 4. Subset for Details Charts (Filtered by Dynamic Month if selected)
+            let detailData = lineData; // Used for categories/operators (responds to line)
+            let detailAllLinesData = tfAllLinesData; // Used for Line Comparison (ignores line filter)
+            
+            if (currentMonth !== 'All') {
+                detailData = lineData.filter(row => getYYYYMM(row) === currentMonth);
+                detailAllLinesData = tfAllLinesData.filter(row => getYYYYMM(row) === currentMonth);
+            }
+
+            // Stat tracking variables for detailed charts
+            const categoryStats = {};
+            const operatorStats = {};
+            const sectionStats = {};
+            const locationStats = {};
+            let rawLogs = [];
+
+            detailData.forEach(row => {
+                const qty = parseFloat(row['Qty.']) || 1;
+                const serial = String(row['Serial #'] || '').trim();
+                const defect = String(row['Quality Defect'] || 'Uncategorized').trim();
+                const operator = String(row['Operator Responsible'] || 'Not Specified').trim() || 'Not Specified';
+                const section = String(row['Section of Line'] || 'Not Specified').trim() || 'Not Specified';
+                const location = String(row['Location on Trailer'] || 'Not Specified').trim() || 'Not Specified';
+                const dateRaw = row['Date'] || `Week ${row['Week']}`;
+                const comments = row['Comments (Be specific)'] || '';
+
+                categoryStats[defect] = (categoryStats[defect] || 0) + qty;
+                operatorStats[operator] = (operatorStats[operator] || 0) + qty;
+                sectionStats[section] = (sectionStats[section] || 0) + qty;
+                locationStats[location] = (locationStats[location] || 0) + qty;
+
+                rawLogs.push({
+                    date: dateRaw, serial: serial, defect: defect,
+                    section: section, location: location, operator: operator,
+                    comments: comments, qty: qty
+                });
+            });
+
+            // 5. Line Comparison Tracking (Always compares 1, 2, 3, 4 within the selected timeframe & month)
+            const compStats = { '1': 0, '2': 0, '3': 0, '4': 0 };
+            detailAllLinesData.forEach(r => {
+                const l = String(r['Line'] || '').trim();
+                if (compStats[l] !== undefined) {
+                    const q = parseFloat(r['Qty.']) || 1;
+                    compStats[l] += q;
+                }
+            });
+
+            // --- CALCULATING DENOMINATORS USING OVERRIDES ---
+            let applicableMonths = currentMonth === 'All' ? sortedAvailable : [currentMonth];
+            let applicableLines = currentLine === 'All' ? ['1','2','3','4'] : [currentLine];
+
+            // A. Top KPI True Total
+            let topTrueTrailers = 0;
+            Array.from(sortedAvailable).forEach(ym => {
+                applicableLines.forEach(l => {
+                    topTrueTrailers += getTrailerCount(ym, l);
+                });
+            });
+
+            // B. Detail Chart True Total (Respects Month filter)
+            let detailTrueTrailers = 0;
+            applicableMonths.forEach(ym => {
+                applicableLines.forEach(l => {
+                    detailTrueTrailers += getTrailerCount(ym, l);
+                });
+            });
+
+            // C. Line Comparison True Totals
+            const lineCompArr = ['1', '2', '3', '4'].map(l => {
+                let trls = 0;
+                applicableMonths.forEach(ym => {
+                    trls += getTrailerCount(ym, l);
+                });
+                return trls > 0 ? parseFloat((compStats[l] / trls).toFixed(2)) : 0;
+            });
+
+            // Prepare Weekly Chart Data (We leave weekly on unique serials since it's hard to split overridden months into weeks)
+            const sortedWeekKeys = Object.keys(weeklyStats).sort();
+            const weeklyLabels = sortedWeekKeys.map(k => weeklyStats[k].label);
+            const weeklyAvgData = sortedWeekKeys.map(k => {
+                const trls = weeklyStats[k].serials.size;
+                return trls > 0 ? parseFloat((weeklyStats[k].defects / trls).toFixed(2)) : 0;
+            });
+
+            // Prepare Monthly Chart Data (Uses Overrides!)
+            const sortedMonthKeys = Object.keys(monthlyStats).sort();
+            const monthlyLabels = sortedMonthKeys.map(k => monthlyStats[k].label);
+            const monthlyAvgData = sortedMonthKeys.map(ym => {
+                let trls = 0;
+                applicableLines.forEach(l => {
+                    trls += getTrailerCount(ym, l);
+                });
+                return trls > 0 ? parseFloat((monthlyStats[ym].defects / trls).toFixed(2)) : 0;
+            });
+
+            // Generate Category Data (Per Trailer uses Detail True Total)
+            const catArr = Object.keys(categoryStats).map(k => ({
+                name: k, 
+                val: detailTrueTrailers > 0 ? parseFloat((categoryStats[k] / detailTrueTrailers).toFixed(2)) : 0 
+            })).sort((a, b) => b.val - a.val);
+
+            // Generate Operator Data (Total Defects, Top 10)
+            const opArr = Object.keys(operatorStats).map(k => ({
+                name: k, val: operatorStats[k]
+            })).sort((a, b) => b.val - a.val).slice(0, 10);
+
+            // Generate Section & Location Data (Total Defects)
+            const secArr = Object.keys(sectionStats).map(k => ({ name: k, val: sectionStats[k] })).sort((a, b) => b.val - a.val);
+            const locArr = Object.keys(locationStats).map(k => ({ name: k, val: locationStats[k] })).sort((a, b) => b.val - a.val);
+
+            // Update Overall Avg KPI (current timeframe, respects line filter)
+            document.getElementById('kpiAvgDefects').innerText = topTrueTrailers > 0 ? (overallDefects / topTrueTrailers).toFixed(2) : '—';
+
+            // ----- YEAR-OVER-YEAR KPI CALCULATIONS (always uses full globalData, respects line filter) -----
+            (function calcYoY() {
+                const appLines = currentLine === 'All' ? ['1','2','3','4'] : [currentLine];
+
+                // Keyword groups for weld categories; finishing uses Section of Line column
+                const weldKeywords    = ['weld', 'missed weld', 'rejected weld', 'bad weld'];
+
+                function isWeld(defect)    { const d = defect.toLowerCase(); return weldKeywords.some(k => d.includes(k)); }
+                function isFinish(defect, section) {
+                    // Finishing defects are defined by Section of Line = 'Finishing', not by defect name keywords
+                    return String(section || '').trim().toLowerCase() === 'finishing';
+                }
+
+                function calcMetricsForYear(yearStr) {
+                    // Filter to this year and applicable lines, across all data
+                    const yData = globalData.filter(r => {
+                        const line = String(r['Line'] || '').trim();
+                        const ym   = getYYYYMM(r);
+                        const y    = String(r['Year'] || '').trim();
+                        return appLines.includes(line) && (y === yearStr || (ym && ym.startsWith(yearStr)));
+                    });
+
+                    // All months in this year for this line set
+                    const months = new Set();
+                    yData.forEach(r => { const ym = getYYYYMM(r); if (ym) months.add(ym); });
+                    let trailers = 0;
+                    Array.from(months).forEach(ym => { appLines.forEach(l => { trailers += getTrailerCount(ym, l); }); });
+
+                    let totalDefects = 0, weldDefects = 0, finishDefects = 0;
+                    yData.forEach(r => {
+                        const qty    = parseFloat(r['Qty.']) || 1;
+                        const defect = String(r['Quality Defect'] || '').trim();
+                        const section = String(r['Section of Line'] || '').trim();
+                        totalDefects += qty;
+                        if (isWeld(defect))          weldDefects   += qty;
+                        if (isFinish(defect, section)) finishDefects += qty;
+                    });
+
+                    return {
+                        trailers,
+                        avgAll:    trailers > 0 ? totalDefects  / trailers : null,
+                        avgWeld:   trailers > 0 ? weldDefects   / trailers : null,
+                        avgFinish: trailers > 0 ? finishDefects / trailers : null,
+                    };
+                }
+
+                // Determine primary and comparison years from currentTimeframe
+                const tfYearMap   = { '2026': '2026', '2025': '2025', '6mo': '2026', 'AllTime': '2026' };
+                const tfLabelMap  = { '2026': '2026 YTD', '2025': '2025 Full Year', '6mo': 'Past 6 Mo.', 'AllTime': 'All Time' };
+                const primaryYear = tfYearMap[currentTimeframe] || '2026';
+                const priorYear   = String(parseInt(primaryYear) - 1);
+                const primaryLabel = tfLabelMap[currentTimeframe] || primaryYear;
+
+                // For 6mo and AllTime, filter data to that timeframe before computing
+                function calcMetricsForTimeframe(tfKey) {
+                    const tfData = getTimeframeData(globalData, tfKey).filter(r => appLines.includes(String(r['Line']||'').trim()));
+                    const months = new Set();
+                    tfData.forEach(r => { const ym = getYYYYMM(r); if (ym) months.add(ym); });
+                    let trailers = 0;
+                    Array.from(months).forEach(ym => { appLines.forEach(l => { trailers += getTrailerCount(ym, l); }); });
+                    let totalDefects = 0, weldDefects = 0, finishDefects = 0;
+                    tfData.forEach(r => {
+                        const qty = parseFloat(r['Qty.']) || 1;
+                        const defect = String(r['Quality Defect'] || '').trim();
+                        const section = String(r['Section of Line'] || '').trim();
+                        totalDefects += qty;
+                        if (isWeld(defect))            weldDefects   += qty;
+                        if (isFinish(defect, section)) finishDefects += qty;
+                    });
+                    return { trailers, avgAll: trailers>0?totalDefects/trailers:null, avgWeld: trailers>0?weldDefects/trailers:null, avgFinish: trailers>0?finishDefects/trailers:null };
+                }
+
+                // Use timeframe-scoped calc for 6mo/AllTime; year-scoped for full years
+                const mPrimary = (currentTimeframe === '6mo' || currentTimeframe === 'AllTime')
+                    ? calcMetricsForTimeframe(currentTimeframe)
+                    : calcMetricsForYear(primaryYear);
+                // 2025 reference values come from hardcoded lineConfig — single source of truth
+                const ref25 = lineConfig[currentLine] || lineConfig['All'];
+                const mPrior = { avgAll: ref25.avg, avgWeld: ref25.weld, avgFinish: ref25.finish };
+
+                function fmt(v) { return v !== null ? v.toFixed(2) : '—'; }
+
+                // Update card labels to match selected timeframe
+                ['kpiWeld26Label','kpiFinish26Label'].forEach(id => {
+                    const el = document.getElementById(id); if (el) el.innerText = primaryLabel;
+                });
+                ['kpiWeld25Label','kpiFinish25Label'].forEach(id => {
+                    const el = document.getElementById(id); if (el) el.innerText = '2025';
+                });
+
+                // Populate display values
+                document.getElementById('kpiWeld26').innerText   = fmt(mPrimary.avgWeld);
+                document.getElementById('kpiWeld25').innerText   = fmt(mPrior.avgWeld);
+                document.getElementById('kpiFinish26').innerText = fmt(mPrimary.avgFinish);
+                document.getElementById('kpiFinish25').innerText = fmt(mPrior.avgFinish);
+                document.getElementById('kpiAvg25').innerText    = fmt(mPrior.avgAll);
+                // kpiAvgDefects (primary timeframe) is set above from timeframe-scoped data
+
+                // YoY badge helper
+                function setYoY(badgeId, labelId, cur, prev) {
+                    const badge = document.getElementById(badgeId);
+                    const lbl   = document.getElementById(labelId);
+                    if (!badge || !lbl || cur === null || prev === null || prev === 0) {
+                        if (badge) badge.classList.add('hidden');
+                        if (lbl)   lbl.textContent = '';
+                        return;
+                    }
+                    const diff = cur - prev;
+                    const pct  = Math.abs(diff / prev * 100).toFixed(1);
+                    const improved = diff < 0; // lower is better for all three
+                    const arrow = diff < 0 ? '▼' : '▲';
+                    badge.textContent = `${arrow} ${Math.abs(diff).toFixed(2)} (${pct}%)`;
+                    badge.className = `text-xs font-bold px-2 py-0.5 rounded-full ${improved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`;
+                    badge.classList.remove('hidden');
+                    lbl.textContent = improved ? `vs ${priorYear} ✓ Improved` : `vs ${priorYear} ✗ Higher`;
+                }
+
+                setYoY('yoyWeldBadge',   'yoyWeldLabel',   mPrimary.avgWeld,   mPrior.avgWeld);
+                setYoY('yoyFinishBadge', 'yoyFinishLabel', mPrimary.avgFinish, mPrior.avgFinish);
+
+                // For overall avg, use the topTrueTrailers-scoped 2026 value for the badge
+                const avg26ForBadge = topTrueTrailers > 0 ? overallDefects / topTrueTrailers : null;
+                setYoY('yoyAvgBadge', 'yoyAvgLabel', avg26ForBadge, mPrior.avgAll);
+
+                // ----- MINI YoY STRIP above weekly chart (same data, compact layout) -----
+                (function renderWeeklyKpiStrip() {
+                    const strip = document.getElementById('weeklyKpiStrip');
+                    if (!strip) return;
+
+                    function miniCard(icon, label, val26, val25, badge26, badgeGood) {
+                        const badgeHtml = badge26 !== null
+                            ? `<span class="text-xs font-bold px-1.5 py-0.5 rounded-full ${badgeGood ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">${badge26}</span>`
+                            : '';
+                        return `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                            <div class="flex items-center gap-1.5 mb-1.5">
+                                <span class="text-base">${icon}</span>
+                                <p class="text-xs text-slate-500 font-semibold leading-tight truncate">${label}</p>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-1">
+                                <span class="text-lg font-bold text-slate-900">${val26 !== null ? val26.toFixed(2) : '—'}</span>
+                                <span class="text-xs text-slate-400">${val25 !== null ? val25.toFixed(2) : '—'} <span class="text-slate-300">'25</span></span>
+                            </div>
+                            <div class="mt-1">${badgeHtml}</div>
+                        </div>`;
+                    }
+
+                    function getBadge(cur, prev) {
+                        if (cur === null || prev === null || prev === 0) return { text: null, good: false };
+                        const diff = cur - prev;
+                        const pct  = Math.abs(diff / prev * 100).toFixed(1);
+                        const good = diff < 0;
+                        return { text: `${good ? '▼' : '▲'} ${Math.abs(diff).toFixed(2)} (${pct}%)`, good };
+                    }
+
+                    const wb = getBadge(mPrimary.avgWeld,   mPrior.avgWeld);
+                    const fb = getBadge(mPrimary.avgFinish, mPrior.avgFinish);
+                    const ab = getBadge(avg26ForBadge, mPrior.avgAll);
+
+                    strip.innerHTML =
+                        miniCard('⚡', 'Welds / Trailer',    mPrimary.avgWeld,   mPrior.avgWeld,   wb.text, wb.good) +
+                        miniCard('🎨', 'Finishing / Trailer', mPrimary.avgFinish, mPrior.avgFinish, fb.text, fb.good) +
+                        miniCard('📊', 'Overall / Trailer',  avg26ForBadge, mPrior.avgAll,    ab.text, ab.good);
+                })();
+            })();
+
+            // ----- LINE COMPARISON INSIGHT STRIP -----
+            (function renderLineInsightStrip(compData) {
+                const strip = document.getElementById('lineInsightStrip');
+                if (!strip) return;
+
+                // compData is lineCompArr: [line1avg, line2avg, line3avg, line4avg]
+                const lines = ['1','2','3','4'];
+                const validEntries = compData.map((v,i) => ({ line: lines[i], avg: v })).filter(e => e.avg > 0);
+                if (validEntries.length === 0) { strip.innerHTML = ''; return; }
+
+                const sorted = [...validEntries].sort((a,b) => a.avg - b.avg);
+                const best = sorted[0];
+                const worst = sorted[sorted.length - 1];
+                const plantAvg = validEntries.reduce((s,e) => s+e.avg, 0) / validEntries.length;
+                const aboveGoal = validEntries.filter(e => e.avg >= 7);
+                const lineColors = { '1': '#000', '2': '#f97316', '3': '#3b82f6', '4': '#22c55e' };
+
+                const insightCards = [
+                    {
+                        icon: '🏆', label: 'Best Line', 
+                        value: `Line ${best.line}`,
+                        sub: `${best.avg.toFixed(2)} def/trailer`,
+                        color: 'bg-emerald-50 border-emerald-200',
+                        valueColor: 'text-emerald-700'
+                    },
+                    {
+                        icon: '⚠️', label: 'Needs Attention',
+                        value: `Line ${worst.line}`,
+                        sub: `${worst.avg.toFixed(2)} def/trailer`,
+                        color: worst.avg >= 7 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200',
+                        valueColor: worst.avg >= 7 ? 'text-red-700' : 'text-amber-700'
+                    },
+                    {
+                        icon: '📊', label: 'Plant Avg (Period)',
+                        value: `${plantAvg.toFixed(2)}`,
+                        sub: plantAvg < 7 ? '✓ Under goal' : '✗ Above goal',
+                        color: plantAvg < 7 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200',
+                        valueColor: plantAvg < 7 ? 'text-blue-700' : 'text-red-700'
+                    },
+                    {
+                        icon: '🎯', label: 'Above Goal (≥7)',
+                        value: aboveGoal.length === 0 ? 'All clear' : aboveGoal.map(e => `Line ${e.line}`).join(', '),
+                        sub: aboveGoal.length === 0 ? 'All lines under goal' : `${aboveGoal.length} line${aboveGoal.length>1?'s':''} over target`,
+                        color: aboveGoal.length === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200',
+                        valueColor: aboveGoal.length === 0 ? 'text-emerald-700' : 'text-red-700'
+                    }
+                ];
+
+                strip.innerHTML = insightCards.map(c => `
+                    <div class="flex items-start gap-2.5 p-3 rounded-xl border ${c.color}">
+                        <span class="text-lg leading-none mt-0.5">${c.icon}</span>
+                        <div class="min-w-0">
+                            <p class="text-xs text-slate-500 font-medium">${c.label}</p>
+                            <p class="text-sm font-bold ${c.valueColor} truncate">${c.value}</p>
+                            <p class="text-xs text-slate-400">${c.sub}</p>
+                        </div>
+                    </div>`).join('');
+            })(lineCompArr);
+
+            // Render Raw Data Table
+            rawLogs.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+            
+            const logHTML = rawLogs.map(log => `
+                <tr class="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+                    <td class="px-6 py-4 whitespace-nowrap text-slate-600 font-medium">${log.date}</td>
+                    <td class="px-6 py-4 font-bold text-slate-900">${log.serial}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-bold bg-rose-50 border border-rose-200 text-rose-700">${log.defect}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="block text-sm font-bold text-slate-800">${log.section}</span>
+                        <span class="block text-xs text-slate-500 mt-0.5">${log.location}</span>
+                    </td>
+                    <td class="px-6 py-4 text-slate-700 font-medium">${log.operator}</td>
+                    <td class="px-6 py-4 text-slate-600 text-sm italic">${log.comments || '-'}</td>
+                </tr>
+            `).join('');
+            document.getElementById('rawDataTableBody').innerHTML = logHTML || `<tr><td colspan="6" class="px-6 py-4 text-center text-slate-500">No data matches the selected filters.</td></tr>`;
+            document.getElementById('rawSearch').value = ''; 
+
+            // Render Charts
+            const lineTitleStr = currentLine === 'All' ? 'Plant Total' : `Line ${currentLine}`;
+            const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+            const tfStr = tfLabels[currentTimeframe];
+            
+            let detailTitleMonth = tfStr; 
+            if (currentMonth !== 'All') {
+                let y = currentMonth.split('-')[0];
+                let mIndex = parseInt(currentMonth.split('-')[1], 10) - 1;
+                detailTitleMonth = `${monthNamesRev[mIndex]} ${y}`;
+            }
+            
+            renderTrendChart('defectsChart', weeklyLabels, weeklyAvgData, `${lineTitleStr} - Weekly Trend (${tfStr})`);
+            renderTrendChart('monthlyChart', monthlyLabels, monthlyAvgData, `${lineTitleStr} - Monthly Trend (${tfStr})`);
+            
+            renderLineCompChart(lineCompArr, `Plant Comparison - Defects per Trailer (${detailTitleMonth})`);
+
+            renderHorizontalBarChart('categoryChart', catArr, `${lineTitleStr} - Defects per Trailer by Category (${detailTitleMonth})`, 'Defects / Trailer');
+            renderHorizontalBarChart('operatorChart', opArr, `${lineTitleStr} - Top 10 Operators by Volume (${detailTitleMonth})`, 'Total Defects');
+            renderDonutChart('sectionChart', secArr, `${lineTitleStr} - Section of Line (${detailTitleMonth})`);
+            renderDonutChart('locationChart', locArr, `${lineTitleStr} - Location on Trailer (${detailTitleMonth})`);
+
+            showAppUI();
+        }
+
+        function showAppUI() {
+            document.getElementById('uploadCard').classList.add('hidden');
+            document.getElementById('loadingState').classList.remove('flex');
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('dashboardContent').classList.remove('hidden');
+        }
+
+        function resetCharts() {
+            if (myChart) myChart.destroy();
+            if (monthlyChart) monthlyChart.destroy();
+            if (lineCompChart) lineCompChart.destroy();
+            if (catChart) catChart.destroy();
+            if (operatorChart) operatorChart.destroy();
+            if (sectionChart) sectionChart.destroy();
+            if (locationChart) locationChart.destroy();
+        }
+
+        // ----- CHART RENDERING FUNCTIONS ----- //
+        function renderTrendChart(canvasId, labels, avgData, titleText) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            let targetChart = canvasId === 'defectsChart' ? myChart : monthlyChart;
+            if (targetChart) targetChart.destroy();
+
+            const cConf = lineConfig[currentLine];
+            
+            const datasets = [
+                { label: `Avg Defects per Trailer`, data: avgData, backgroundColor: cConf.bg, borderColor: cConf.border, borderWidth: 1, borderRadius: 4, order: 4 },
+                { label: 'Goal (< 7 / Trailer)', data: Array(labels.length).fill(7), type: 'line', borderColor: '#10b981', borderWidth: 3, borderDash: [6, 4], pointRadius: 0, fill: false, order: 3 },
+                { label: '2025 Plant Avg (6.8)', data: Array(labels.length).fill(6.8), type: 'line', borderColor: '#6366f1', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false, order: 2 }
+            ];
+
+            if (currentLine !== 'All') {
+                datasets.push({ label: `2025 Line ${currentLine} Avg (${cConf.avg})`, data: Array(labels.length).fill(cConf.avg), type: 'line', borderColor: '#f59e0b', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false, order: 1 });
+            }
+
+            const newChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: datasets },
+                plugins: [whiteBackgroundPlugin],
+                options: {
+                    animation: false, responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: { display: true, text: titleText, font: { size: 16 }, padding: { bottom: 15 } },
+                        legend: { position: 'top', labels: { usePointStyle: true, padding: 15 } }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { title: { display: true, text: 'Defects / Trailer', font: { weight: 'bold' } }, beginAtZero: true }
+                    }
+                }
+            });
+
+            if (canvasId === 'defectsChart') myChart = newChart;
+            else monthlyChart = newChart;
+        }
+
+        function renderLineCompChart(avgData, titleText) {
+            const ctx = document.getElementById('lineCompChart').getContext('2d');
+            if (lineCompChart) lineCompChart.destroy();
+
+            const labels = ['Line 1', 'Line 2', 'Line 3', 'Line 4'];
+            const bgColors = [lineConfig['1'].bg, lineConfig['2'].bg, lineConfig['3'].bg, lineConfig['4'].bg];
+            const borderColors = [lineConfig['1'].border, lineConfig['2'].border, lineConfig['3'].border, lineConfig['4'].border];
+
+            lineCompChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: `Avg Defects per Trailer`, data: avgData, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1, borderRadius: 4, order: 2 },
+                        { label: 'Goal (< 7 / Trailer)', data: [7, 7, 7, 7], type: 'line', borderColor: '#10b981', borderWidth: 3, borderDash: [6, 4], pointRadius: 0, fill: false, order: 1 },
+                    ]
+                },
+                plugins: [whiteBackgroundPlugin],
+                options: {
+                    animation: false, responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: titleText, font: { size: 16 }, padding: { bottom: 15 } },
+                        legend: { position: 'top', labels: { usePointStyle: true, padding: 15 } }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { weight: 'bold', size: 14 } } },
+                        y: { title: { display: true, text: 'Defects / Trailer', font: { weight: 'bold' } }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        function renderHorizontalBarChart(canvasId, dataArr, titleText, xAxisLabel) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            if (canvasId === 'categoryChart') { if (catChart) catChart.destroy(); }
+            if (canvasId === 'operatorChart') { if (operatorChart) operatorChart.destroy(); }
+
+            const newChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dataArr.map(d => d.name),
+                    datasets: [{
+                        label: xAxisLabel,
+                        data: dataArr.map(d => d.val),
+                        backgroundColor: lineConfig[currentLine].bg,
+                        borderRadius: 4
+                    }]
+                },
+                plugins: [whiteBackgroundPlugin],
+                options: {
+                    animation: false, indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        title: { display: true, text: titleText, font: { size: 14 }, padding: { bottom: 10 } },
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: xAxisLabel, font: { weight: 'bold' } }, beginAtZero: true },
+                        y: { grid: { display: false }, ticks: { font: { weight: '500' } } }
+                    }
+                }
+            });
+
+            if (canvasId === 'categoryChart') catChart = newChart;
+            if (canvasId === 'operatorChart') operatorChart = newChart;
+        }
+
+        function renderDonutChart(canvasId, dataArr, titleText) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            if (canvasId === 'sectionChart') { if (sectionChart) sectionChart.destroy(); }
+            if (canvasId === 'locationChart') { if (locationChart) locationChart.destroy(); }
+
+            const newChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: dataArr.map(d => d.name),
+                    datasets: [{
+                        data: dataArr.map(d => d.val),
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                plugins: [whiteBackgroundPlugin],
+                options: {
+                    animation: false, responsive: true, maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                        title: { display: true, text: titleText, font: { size: 14 }, padding: { bottom: 10 } },
+                        legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 8 } },
+                        tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw} Defects` } }
+                    }
+                }
+            });
+
+            if (canvasId === 'sectionChart') sectionChart = newChart;
+            if (canvasId === 'locationChart') locationChart = newChart;
+        }
+
+        // ----- CUSTOM REPORT BUILDER ----- //
+        let selectedReportLines = new Set(['All']);
+
+        // Per-line chart config: { line -> Set of chartIds }
+        const perLineChartOptions = [
+            { id: 'weeklyTrend',  label: 'Weekly Trend',        sub: 'Defects per trailer by week',   defaultOn: true },
+            { id: 'monthlyTrend', label: 'Monthly Trend',       sub: 'Defects per trailer by month',  defaultOn: true },
+            { id: 'category',     label: 'Category Breakdown',  sub: 'Defects per trailer by type',   defaultOn: true },
+            { id: 'operator',     label: 'Top Operators',       sub: 'Top 10 by defect volume',       defaultOn: false },
+            { id: 'section',      label: 'Section of Line',     sub: 'Donut by line section',         defaultOn: false },
+            { id: 'location',     label: 'Location on Trailer', sub: 'Donut by trailer location',     defaultOn: false },
+            { id: 'kpis',         label: 'KPI Summary',         sub: 'Defects, trailers, and avg',    defaultOn: true },
+        ];
+
+        // Stored per-line selections: { 'All': Set{'weeklyTrend',...}, '1': Set{...}, ... }
+        let lineChartSelections = {};
+
+        function getDefaultSelectionForLine() {
+            return new Set(perLineChartOptions.filter(o => o.defaultOn).map(o => o.id));
+        }
+
+        function buildAccordion() {
+            const container = document.getElementById('perLineAccordion');
+            container.innerHTML = '';
+            const lineLabels = { 'All': 'Plant Total', '1': 'Line 1', '2': 'Line 2', '3': 'Line 3', '4': 'Line 4' };
+            const lineColors = { 'All': 'bg-slate-100 text-slate-700 border-slate-300', '1': 'bg-gray-900 text-white border-gray-700', '2': 'bg-orange-100 text-orange-800 border-orange-300', '3': 'bg-blue-100 text-blue-800 border-blue-300', '4': 'bg-green-100 text-green-800 border-green-300' };
+
+            Array.from(selectedReportLines).forEach(line => {
+                if (!lineChartSelections[line]) lineChartSelections[line] = getDefaultSelectionForLine();
+                const sel = lineChartSelections[line];
+                const label = lineLabels[line] || `Line ${line}`;
+                const colorClass = lineColors[line] || 'bg-slate-100 text-slate-700 border-slate-300';
+                const checkedCount = sel.size;
+                const totalCount = perLineChartOptions.length;
+
+                const block = document.createElement('div');
+                block.className = 'border border-slate-200 rounded-xl overflow-hidden';
+                block.innerHTML = `
+                    <button type="button" onclick="toggleAccordion('acc-${line}')" class="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold px-2 py-0.5 rounded-md border ${colorClass}">${label}</span>
+                            <span class="text-xs text-slate-500">${checkedCount} of ${totalCount} charts</span>
+                        </div>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 acc-arrow-${line} transition-transform"></i>
+                    </button>
+                    <div id="acc-${line}" class="hidden p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white">
+                        ${perLineChartOptions.map(opt => `
+                            <label class="flex items-center gap-2.5 p-2.5 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition-colors">
+                                <input type="checkbox" class="line-chart-check w-4 h-4 accent-indigo-600" data-line="${line}" data-chart="${opt.id}" ${sel.has(opt.id) ? 'checked' : ''} onchange="onLineChartToggle(this)" />
+                                <div>
+                                    <p class="text-xs font-semibold text-slate-800">${opt.label}</p>
+                                    <p class="text-xs text-slate-400">${opt.sub}</p>
+                                </div>
+                            </label>`).join('')}
+                    </div>`;
+                container.appendChild(block);
+            });
+            lucide.createIcons();
+        }
+
+        function toggleAccordion(id) {
+            const panel = document.getElementById(id);
+            const line = id.replace('acc-', '');
+            const arrow = document.querySelector(`.acc-arrow-${line}`);
+            if (!panel) return;
+            const isOpen = !panel.classList.contains('hidden');
+            panel.classList.toggle('hidden', isOpen);
+            if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+        }
+
+        function onLineChartToggle(checkbox) {
+            const line = checkbox.dataset.line;
+            const chart = checkbox.dataset.chart;
+            if (!lineChartSelections[line]) lineChartSelections[line] = new Set();
+            if (checkbox.checked) lineChartSelections[line].add(chart);
+            else lineChartSelections[line].delete(chart);
+            // Update counter badge
+            const count = lineChartSelections[line].size;
+            const total = perLineChartOptions.length;
+            const btn = document.querySelector(`#acc-${line}`)?.previousElementSibling;
+            if (btn) {
+                const counter = btn.querySelector('.text-xs.text-slate-500');
+                if (counter) counter.textContent = `${count} of ${total} charts`;
+            }
+        }
+
+        function openReportBuilder() {
+            const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+            const lineStr = currentLine === 'All' ? 'Plant Total' : `Line ${currentLine}`;
+            document.getElementById('rptTitle').value = `${lineStr} Quality Report – ${tfLabels[currentTimeframe]}`;
+
+            selectedReportLines = new Set([currentLine]);
+            document.querySelectorAll('.rpt-line-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.line === currentLine);
+            });
+
+            buildAccordion();
+            document.getElementById('reportBuilderModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeReportBuilder() {
+            document.getElementById('reportBuilderModal').classList.add('hidden');
+        }
+
+        function toggleRptLine(btn) {
+            const line = btn.dataset.line;
+            if (btn.classList.contains('active')) {
+                if (selectedReportLines.size === 1) return;
+                selectedReportLines.delete(line);
+                btn.classList.remove('active');
+            } else {
+                selectedReportLines.add(line);
+                btn.classList.add('active');
+            }
+            buildAccordion();
+        }
+
+        function applyPreset(preset) {
+            const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+            const tf = tfLabels[currentTimeframe];
+
+            if (preset === 'none') {
+                Array.from(selectedReportLines).forEach(l => { lineChartSelections[l] = new Set(); });
+                document.querySelector('.plant-chart-check[data-chart="lineComp"]').checked = false;
+                buildAccordion(); return;
+            }
+            if (preset === 'full') {
+                Array.from(selectedReportLines).forEach(l => { lineChartSelections[l] = new Set(perLineChartOptions.map(o=>o.id)); });
+                document.querySelector('.plant-chart-check[data-chart="lineComp"]').checked = true;
+                document.getElementById('rptTitle').value = `Full Quality Report – ${tf}`;
+                buildAccordion(); return;
+            }
+            if (preset === 'weekly') {
+                const weeklySet = new Set(['weeklyTrend','monthlyTrend','kpis']);
+                selectedReportLines = new Set(['1','2','3','4']);
+                document.querySelectorAll('.rpt-line-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.line !== 'All'));
+                ['1','2','3','4'].forEach(l => { lineChartSelections[l] = new Set(weeklySet); });
+                document.querySelector('.plant-chart-check[data-chart="lineComp"]').checked = false;
+                document.getElementById('rptTitle').value = `Weekly Trend Report – ${tf}`;
+                buildAccordion(); return;
+            }
+            if (preset === 'comparison') {
+                selectedReportLines = new Set(['All']);
+                document.querySelectorAll('.rpt-line-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.line === 'All'));
+                lineChartSelections['All'] = new Set(['weeklyTrend','kpis']);
+                document.querySelector('.plant-chart-check[data-chart="lineComp"]').checked = true;
+                document.getElementById('rptTitle').value = `Plant Line Comparison – ${tf}`;
+                buildAccordion(); return;
+            }
+        }
+
+        // Renders a chart offscreen for the given line and returns a base64 PNG promise
+        function renderOffscreenChart(type, line, tf, month) {
+            return new Promise(resolve => {
+                // Build filtered data for this line
+                const tfData = getTimeframeData(globalData, tf);
+                const lineData = line === 'All' ? tfData : tfData.filter(r => String(r['Line'] || '').trim() === line);
+
+                const weeklyStats = {};
+                const monthlyStats = {};
+                const categoryStats = {};
+                const operatorStats = {};
+                const sectionStats = {};
+                const locationStats = {};
+
+                // Get available months
+                let availableMonths = new Set();
+                tfData.forEach(r => { let ym = getYYYYMM(r); if (ym) availableMonths.add(ym); });
+                const sortedAvailable = Array.from(availableMonths).sort();
+
+                lineData.forEach(row => {
+                    const week = parseInt(row['Week'], 10);
+                    const qty = parseFloat(row['Qty.']) || 1;
+                    const serial = String(row['Serial #'] || '').trim();
+                    if (!isNaN(week)) {
+                        const yearStr = String(row['Year'] || '0000').trim();
+                        const weekKey = `${yearStr}-W${String(week).padStart(2, '0')}`;
+                        if (!weeklyStats[weekKey]) weeklyStats[weekKey] = { label: `W${week}('${yearStr.slice(-2)})`, defects: 0, serials: new Set() };
+                        weeklyStats[weekKey].defects += qty;
+                        if (serial) weeklyStats[weekKey].serials.add(serial);
+                    }
+                    const ym = getYYYYMM(row);
+                    if (ym) {
+                        const mIndex = parseInt(ym.split('-')[1], 10) - 1;
+                        const mLabel = `${monthNamesRev[mIndex]} '${ym.split('-')[0].slice(-2)}`;
+                        if (!monthlyStats[ym]) monthlyStats[ym] = { label: mLabel, defects: 0, serials: new Set() };
+                        monthlyStats[ym].defects += qty;
+                        if (serial) monthlyStats[ym].serials.add(serial);
+                    }
+                });
+
+                // Detail data with month filter
+                let detailData = lineData;
+                let detailAllLines = tfData;
+                if (month !== 'All') {
+                    detailData = lineData.filter(r => getYYYYMM(r) === month);
+                    detailAllLines = tfData.filter(r => getYYYYMM(r) === month);
+                }
+                detailData.forEach(row => {
+                    const qty = parseFloat(row['Qty.']) || 1;
+                    const defect = String(row['Quality Defect'] || 'Uncategorized').trim();
+                    const operator = String(row['Operator Responsible'] || 'Not Specified').trim() || 'Not Specified';
+                    const section = String(row['Section of Line'] || 'Not Specified').trim() || 'Not Specified';
+                    const location = String(row['Location on Trailer'] || 'Not Specified').trim() || 'Not Specified';
+                    categoryStats[defect] = (categoryStats[defect] || 0) + qty;
+                    operatorStats[operator] = (operatorStats[operator] || 0) + qty;
+                    sectionStats[section] = (sectionStats[section] || 0) + qty;
+                    locationStats[location] = (locationStats[location] || 0) + qty;
+                });
+
+                const applicableMonths = month === 'All' ? sortedAvailable : [month];
+                const applicableLines = line === 'All' ? ['1','2','3','4'] : [line];
+
+                // Denominators
+                let detailTrueTrailers = 0;
+                applicableMonths.forEach(ym => { applicableLines.forEach(l => { detailTrueTrailers += getTrailerCount(ym, l); }); });
+
+                const sortedWeekKeys = Object.keys(weeklyStats).sort();
+                const weeklyLabels = sortedWeekKeys.map(k => weeklyStats[k].label);
+                const weeklyAvgData = sortedWeekKeys.map(k => {
+                    const t = weeklyStats[k].serials.size;
+                    return t > 0 ? parseFloat((weeklyStats[k].defects / t).toFixed(2)) : 0;
+                });
+
+                const sortedMonthKeys = Object.keys(monthlyStats).sort();
+                const monthlyLabels = sortedMonthKeys.map(k => monthlyStats[k].label);
+                const monthlyAvgData = sortedMonthKeys.map(ym => {
+                    let t = 0; applicableLines.forEach(l => { t += getTrailerCount(ym, l); });
+                    return t > 0 ? parseFloat((monthlyStats[ym].defects / t).toFixed(2)) : 0;
+                });
+
+                // Line comp
+                const compStats = { '1': 0, '2': 0, '3': 0, '4': 0 };
+                detailAllLines.forEach(r => {
+                    const l = String(r['Line'] || '').trim();
+                    if (compStats[l] !== undefined) compStats[l] += parseFloat(r['Qty.']) || 1;
+                });
+                const lineCompArr = ['1','2','3','4'].map(l => {
+                    let t = 0; applicableMonths.forEach(ym => { t += getTrailerCount(ym, l); });
+                    return t > 0 ? parseFloat((compStats[l] / t).toFixed(2)) : 0;
+                });
+
+                const catArr = Object.keys(categoryStats).map(k => ({ name: k, val: detailTrueTrailers > 0 ? parseFloat((categoryStats[k] / detailTrueTrailers).toFixed(2)) : 0 })).sort((a,b) => b.val - a.val);
+                const opArr = Object.keys(operatorStats).map(k => ({ name: k, val: operatorStats[k] })).sort((a,b) => b.val - a.val).slice(0,10);
+                const secArr = Object.keys(sectionStats).map(k => ({ name: k, val: sectionStats[k] })).sort((a,b) => b.val - a.val);
+                const locArr = Object.keys(locationStats).map(k => ({ name: k, val: locationStats[k] })).sort((a,b) => b.val - a.val);
+
+                const cConf = lineConfig[line];
+                const lineStr = line === 'All' ? 'Plant Total' : `Line ${line}`;
+                const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+                const tfStr = tfLabels[tf];
+                const monthStr = month === 'All' ? tfStr : (() => { let y = month.split('-')[0]; let mi = parseInt(month.split('-')[1],10)-1; return `${monthNamesRev[mi]} ${y}`; })();
+
+                // Offscreen canvas — Chart.js handles DPR scaling internally via devicePixelRatio option
+                const DPR = 3;
+                const CANVAS_W = 900, CANVAS_H = 420;
+                const canvas = document.createElement('canvas');
+                canvas.width  = CANVAS_W;
+                canvas.height = CANVAS_H;
+                const ctx = canvas.getContext('2d');
+
+                const wpPlugin = { id: 'wb', beforeDraw: (ch) => { ch.ctx.save(); ch.ctx.globalCompositeOperation='destination-over'; ch.ctx.fillStyle='#ffffff'; ch.ctx.fillRect(0,0,ch.width,ch.height); ch.ctx.restore(); }};
+
+                let chartCfg = null;
+
+                if (type === 'weeklyTrend') {
+                    const datasets = [
+                        { label: 'Avg Defects/Trailer', data: weeklyAvgData, backgroundColor: cConf.bg, borderColor: cConf.border, borderWidth:1, borderRadius:3, order:4 },
+                        { label: 'Goal (<7)', data: Array(weeklyLabels.length).fill(7), type:'line', borderColor:'#10b981', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, order:3 },
+                        { label: '2025 Plant Avg (6.8)', data: Array(weeklyLabels.length).fill(6.8), type:'line', borderColor:'#6366f1', borderWidth:2, borderDash:[5,5], pointRadius:0, fill:false, order:2 }
+                    ];
+                    if (line !== 'All') datasets.push({ label: `2025 Line ${line} Avg (${cConf.avg})`, data: Array(weeklyLabels.length).fill(cConf.avg), type:'line', borderColor:'#f59e0b', borderWidth:2, borderDash:[5,5], pointRadius:0, fill:false, order:1 });
+                    chartCfg = { type:'bar', data:{ labels:weeklyLabels, datasets }, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, plugins:{ title:{ display:true, text:`${lineStr} – Weekly Trend (${tfStr})`, font:{size:15}, padding:{bottom:12} }, legend:{ position:'top', labels:{ usePointStyle:true, padding:12 }}}, scales:{ x:{ grid:{ display:false }}, y:{ title:{ display:true, text:'Defects / Trailer', font:{weight:'bold'}}, beginAtZero:true }}}};
+                }
+                else if (type === 'monthlyTrend') {
+                    const datasets = [
+                        { label: 'Avg Defects/Trailer', data: monthlyAvgData, backgroundColor: cConf.bg, borderColor: cConf.border, borderWidth:1, borderRadius:3, order:4 },
+                        { label: 'Goal (<7)', data: Array(monthlyLabels.length).fill(7), type:'line', borderColor:'#10b981', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, order:3 },
+                        { label: '2025 Plant Avg (6.8)', data: Array(monthlyLabels.length).fill(6.8), type:'line', borderColor:'#6366f1', borderWidth:2, borderDash:[5,5], pointRadius:0, fill:false, order:2 }
+                    ];
+                    if (line !== 'All') datasets.push({ label: `2025 Line ${line} Avg (${cConf.avg})`, data: Array(monthlyLabels.length).fill(cConf.avg), type:'line', borderColor:'#f59e0b', borderWidth:2, borderDash:[5,5], pointRadius:0, fill:false, order:1 });
+                    chartCfg = { type:'bar', data:{ labels:monthlyLabels, datasets }, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, plugins:{ title:{ display:true, text:`${lineStr} – Monthly Trend (${tfStr})`, font:{size:15}, padding:{bottom:12} }, legend:{ position:'top', labels:{ usePointStyle:true, padding:12 }}}, scales:{ x:{ grid:{ display:false }}, y:{ title:{ display:true, text:'Defects / Trailer', font:{weight:'bold'}}, beginAtZero:true }}}};
+                }
+                else if (type === 'lineComp') {
+                    chartCfg = { type:'bar', data:{ labels:['Line 1','Line 2','Line 3','Line 4'], datasets:[
+                        { label:'Avg Defects/Trailer', data:lineCompArr, backgroundColor:[lineConfig['1'].bg,lineConfig['2'].bg,lineConfig['3'].bg,lineConfig['4'].bg], borderColor:[lineConfig['1'].border,lineConfig['2'].border,lineConfig['3'].border,lineConfig['4'].border], borderWidth:1, borderRadius:4, order:2 },
+                        { label:'Goal (<7)', data:[7,7,7,7], type:'line', borderColor:'#10b981', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, order:1 }
+                    ]}, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, plugins:{ title:{ display:true, text:`Plant Line Comparison – Defects/Trailer (${monthStr})`, font:{size:15}, padding:{bottom:12}}, legend:{ position:'top', labels:{ usePointStyle:true, padding:12}}}, scales:{ x:{ grid:{ display:false}, ticks:{ font:{weight:'bold',size:13}}}, y:{ title:{ display:true, text:'Defects / Trailer', font:{weight:'bold'}}, beginAtZero:true}}}};
+                }
+                else if (type === 'category') {
+                    chartCfg = { type:'bar', data:{ labels:catArr.map(d=>d.name), datasets:[{ label:'Defects/Trailer', data:catArr.map(d=>d.val), backgroundColor:cConf.bg, borderRadius:3 }]}, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, indexAxis:'y', plugins:{ title:{ display:true, text:`${lineStr} – Category Breakdown (${monthStr})`, font:{size:14}, padding:{bottom:10}}, legend:{display:false}}, scales:{ x:{ title:{ display:true, text:'Defects / Trailer', font:{weight:'bold'}}, beginAtZero:true}, y:{ grid:{display:false}, ticks:{font:{weight:'500'}}}}}};
+                }
+                else if (type === 'operator') {
+                    chartCfg = { type:'bar', data:{ labels:opArr.map(d=>d.name), datasets:[{ label:'Total Defects', data:opArr.map(d=>d.val), backgroundColor:cConf.bg, borderRadius:3 }]}, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, indexAxis:'y', plugins:{ title:{ display:true, text:`${lineStr} – Top 10 Operators (${monthStr})`, font:{size:14}, padding:{bottom:10}}, legend:{display:false}}, scales:{ x:{ title:{ display:true, text:'Total Defects', font:{weight:'bold'}}, beginAtZero:true}, y:{ grid:{display:false}, ticks:{font:{weight:'500'}}}}}};
+                }
+                else if (type === 'section') {
+                    chartCfg = { type:'doughnut', data:{ labels:secArr.map(d=>d.name), datasets:[{ data:secArr.map(d=>d.val), backgroundColor:colors, borderWidth:2, borderColor:'#fff'}]}, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, cutout:'55%', plugins:{ title:{ display:true, text:`${lineStr} – Section of Line (${monthStr})`, font:{size:14}, padding:{bottom:10}}, legend:{ position:'right', labels:{ usePointStyle:true, boxWidth:8}}}}};
+                }
+                else if (type === 'location') {
+                    chartCfg = { type:'doughnut', data:{ labels:locArr.map(d=>d.name), datasets:[{ data:locArr.map(d=>d.val), backgroundColor:colors, borderWidth:2, borderColor:'#fff'}]}, plugins:[wpPlugin], options:{ animation:false, responsive:false, maintainAspectRatio:false, devicePixelRatio: DPR, cutout:'55%', plugins:{ title:{ display:true, text:`${lineStr} – Location on Trailer (${monthStr})`, font:{size:14}, padding:{bottom:10}}, legend:{ position:'right', labels:{ usePointStyle:true, boxWidth:8}}}}};
+                }
+
+                if (!chartCfg) { resolve(''); return; }
+
+                const ch = new Chart(ctx, chartCfg);
+                // Small delay to allow chart to render
+                setTimeout(() => {
+                    const img = canvas.toDataURL('image/png', 1.0);
+                    ch.destroy();
+                    resolve(img);
+                }, 300);
+            });
+        }
+
+        function getTimeframeData(data, tf) {
+            const currentYear = new Date().getFullYear();
+            if (tf === '2026') return data.filter(r => { let y = String(r['Year']||'').trim(); let ym = getYYYYMM(r); return y==='2026'||(ym&&ym.startsWith('2026')); });
+            if (tf === '2025') return data.filter(r => { let y = String(r['Year']||'').trim(); let ym = getYYYYMM(r); return y==='2025'||(ym&&ym.startsWith('2025')); });
+            if (tf === 'AllTime') return data;
+            if (tf === '6mo') {
+                let maxYM = "0000-00";
+                data.forEach(r => { let ym = getYYYYMM(r); if (ym) { let y = parseInt(ym.split('-')[0],10); if (y<=currentYear+1 && ym>maxYM) maxYM=ym; }});
+                if (maxYM === "0000-00") return data;
+                let maxYear=parseInt(maxYM.split('-')[0],10), maxMonth=parseInt(maxYM.split('-')[1],10);
+                let targetMonths = new Set();
+                for (let i=0;i<6;i++) { let y=maxYear,m=maxMonth-i; if(m<=0){m+=12;y-=1;} targetMonths.add(`${y}-${String(m).padStart(2,'0')}`); }
+                return data.filter(r => { let ym = getYYYYMM(r); return ym && targetMonths.has(ym); });
+            }
+            return data;
+        }
+
+        async function generateCustomReport() {
+            if (!globalData || globalData.length === 0) { showToast("No data loaded.", true); return; }
+
+            const title = document.getElementById('rptTitle').value || 'Quality Report';
+            const orientation = document.querySelector('input[name="rptOrientation"]:checked').value;
+            const includeLineComp = document.querySelector('.plant-chart-check[data-chart="lineComp"]')?.checked;
+            const linesToRender = Array.from(selectedReportLines);
+
+            // Validate at least one chart somewhere
+            const anyChart = linesToRender.some(l => lineChartSelections[l] && lineChartSelections[l].size > 0) || includeLineComp;
+            if (!anyChart) { showToast("Please select at least one chart.", true); return; }
+
+            closeReportBuilder();
+            showToast("Building your custom report…");
+
+            const tf = currentTimeframe;
+            const month = currentMonth;
+            const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+
+            // Build plant-wide line comp data for insights
+            function buildLineCompData() {
+                const tfData = getTimeframeData(globalData, tf);
+                let availableMonths = new Set();
+                tfData.forEach(r => { let ym = getYYYYMM(r); if(ym) availableMonths.add(ym); });
+                const sortedAvail = Array.from(availableMonths).sort();
+                const applicableMonths = month === 'All' ? sortedAvail : [month];
+
+                const compStats = { '1':0,'2':0,'3':0,'4':0 };
+                let detailAllLines = tfData;
+                if (month !== 'All') detailAllLines = tfData.filter(r => getYYYYMM(r) === month);
+                detailAllLines.forEach(r => {
+                    const l = String(r['Line']||'').trim();
+                    if (compStats[l] !== undefined) compStats[l] += parseFloat(r['Qty.'])||1;
+                });
+                return ['1','2','3','4'].map(l => {
+                    let t = 0; applicableMonths.forEach(ym => { t += getTrailerCount(ym, l); });
+                    return t > 0 ? parseFloat((compStats[l]/t).toFixed(2)) : 0;
+                });
+            }
+
+            // Builds the 3 YoY KPI cards for the print page (matches dashboard Image 2 style)
+            function buildYoYKpiHtml() {
+                const weldKw   = ['weld', 'missed weld', 'rejected weld', 'bad weld'];
+                const isWeld   = d => weldKw.some(k => d.toLowerCase().includes(k));
+                const isFinish = (d, section) => String(section || '').trim().toLowerCase() === 'finishing';
+                const appLines = ['1','2','3','4'];
+
+                function yearMetrics(yearStr) {
+                    const yData = globalData.filter(r => {
+                        const l = String(r['Line']||'').trim();
+                        const ym = getYYYYMM(r); const y = String(r['Year']||'').trim();
+                        return appLines.includes(l) && (y===yearStr||(ym&&ym.startsWith(yearStr)));
+                    });
+                    const months = new Set();
+                    yData.forEach(r => { const ym=getYYYYMM(r); if(ym) months.add(ym); });
+                    let trailers=0;
+                    Array.from(months).forEach(ym=>{ appLines.forEach(l=>{ trailers+=getTrailerCount(ym,l); }); });
+                    let total=0,weld=0,finish=0;
+                    yData.forEach(r => {
+                        const q=parseFloat(r['Qty.'])||1, d=String(r['Quality Defect']||'').trim();
+                        const s=String(r['Section of Line']||'').trim();
+                        total+=q; if(isWeld(d)) weld+=q; if(isFinish(d,s)) finish+=q;
+                    });
+                    const fmt = (n,t) => t>0?(n/t).toFixed(2):'—';
+                    return { avgAll:fmt(total,trailers), avgWeld:fmt(weld,trailers), avgFinish:fmt(finish,trailers),
+                             rawAll:trailers>0?total/trailers:null, rawWeld:trailers>0?weld/trailers:null, rawFinish:trailers>0?finish/trailers:null };
+                }
+
+                const m26 = yearMetrics('2026');
+                // 2025 plant-level reference comes from hardcoded lineConfig
+                const _ref25 = lineConfig['All'];
+                const m25 = { avgAll: _ref25.avg.toFixed(2), avgWeld: _ref25.weld.toFixed(2), avgFinish: _ref25.finish.toFixed(2),
+                              rawAll: _ref25.avg, rawWeld: _ref25.weld, rawFinish: _ref25.finish };
+
+                function badge(cur, prev) {
+                    if (cur===null||prev===null||prev===0) return '';
+                    const diff=cur-prev, pct=Math.abs(diff/prev*100).toFixed(1);
+                    const good=diff<0, arrow=diff<0?'▼':'▲';
+                    const bg=good?'#dcfce7':'#fee2e2', col=good?'#15803d':'#b91c1c';
+                    const label = good ? 'vs 2025 ✓ Improved' : 'vs 2025 ✗ Higher';
+                    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:${bg};color:${col};">${arrow} ${Math.abs(diff).toFixed(2)} (${pct}%)</span> <span style="font-size:10px;color:#6b7280;">${label}</span>`;
+                }
+
+                function card(icon, iconBg, iconColor, borderColor, label, val26, val25raw, val25fmt, badgeHtml) {
+                    return `<div style="flex:1;background:#ffffff;border:1px solid ${borderColor};border-radius:12px;padding:16px 18px;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                            <div style="background:${iconBg};padding:8px;border-radius:10px;color:${iconColor};font-size:16px;line-height:1;">${icon}</div>
+                            <span style="font-size:12px;font-weight:600;color:#374151;">${label}</span>
+                        </div>
+                        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:10px;">
+                            <div>
+                                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">2026 YTD</div>
+                                <div style="font-size:24px;font-weight:800;color:#111827;">${val26}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">2025 Full Year</div>
+                                <div style="font-size:18px;font-weight:700;color:#6b7280;">${val25fmt}</div>
+                            </div>
+                        </div>
+                        <div>${badgeHtml}</div>
+                    </div>`;
+                }
+
+                return `<div style="display:flex;gap:14px;margin-bottom:16px;">
+                    ${card('⚡','#ffedd5','#ea580c','#fed7aa','Missed + Rejected Welds / Trailer', m26.avgWeld, m25.rawWeld, m25.avgWeld, badge(m26.rawWeld,m25.rawWeld))}
+                    ${card('🎨','#ede9fe','#7c3aed','#ddd6fe','Finishing Defects / Trailer',        m26.avgFinish, m25.rawFinish, m25.avgFinish, badge(m26.rawFinish,m25.rawFinish))}
+                    ${card('📊','#d1fae5','#059669','#a7f3d0','Overall Avg Defects / Trailer',      m26.avgAll, m25.rawAll, m25.avgAll, badge(m26.rawAll,m25.rawAll))}
+                </div>`;
+            }
+
+            // Builds the 4-box line insight strip (best/worst/avg/goal) for print
+            function buildInsightHtml(compData) {
+                const lines = ['1','2','3','4'];
+                const validEntries = compData.map((v,i) => ({line:lines[i],avg:v})).filter(e=>e.avg>0);
+                if (validEntries.length === 0) return '';
+                const sorted = [...validEntries].sort((a,b)=>a.avg-b.avg);
+                const best = sorted[0]; const worst = sorted[sorted.length-1];
+                const plantAvg = (validEntries.reduce((s,e)=>s+e.avg,0)/validEntries.length).toFixed(2);
+                const aboveGoal = validEntries.filter(e=>e.avg>=7);
+                const insightData = [
+                    { title:'🏆 Best Line', val:`Line ${best.line}`, sub:`${best.avg.toFixed(2)} def/trailer`, bg:'#f0fdf4', border:'#bbf7d0', color:'#15803d' },
+                    { title:'⚠️ Needs Attention', val:`Line ${worst.line}`, sub:`${worst.avg.toFixed(2)} def/trailer`, bg:worst.avg>=7?'#fef2f2':'#fffbeb', border:worst.avg>=7?'#fecaca':'#fde68a', color:worst.avg>=7?'#b91c1c':'#92400e' },
+                    { title:'📊 Plant Avg', val:plantAvg, sub:parseFloat(plantAvg)<7?'✓ Under goal':'✗ Above goal', bg:parseFloat(plantAvg)<7?'#eff6ff':'#fef2f2', border:parseFloat(plantAvg)<7?'#bfdbfe':'#fecaca', color:parseFloat(plantAvg)<7?'#1d4ed8':'#b91c1c' },
+                    { title:'🎯 Above Goal (≥7)', val:aboveGoal.length===0?'All clear':aboveGoal.map(e=>`L${e.line}`).join(', '), sub:aboveGoal.length===0?'All lines under goal':`${aboveGoal.length} line${aboveGoal.length>1?'s':''} over target`, bg:aboveGoal.length===0?'#f0fdf4':'#fef2f2', border:aboveGoal.length===0?'#bbf7d0':'#fecaca', color:aboveGoal.length===0?'#15803d':'#b91c1c' },
+                ];
+                return `<div class="insight-strip">${insightData.map(d=>`
+                    <div class="insight-box" style="background:${d.bg};border-color:${d.border};">
+                        <div class="insight-title">${d.title}</div>
+                        <div class="insight-val" style="color:${d.color};">${d.val}</div>
+                        <div class="insight-sub">${d.sub}</div>
+                    </div>`).join('')}</div>`;
+            }
+
+            function getKpis(line) {
+                const weldKw   = ['weld', 'missed weld', 'rejected weld', 'bad weld'];
+                const isWeld   = d => weldKw.some(k => d.toLowerCase().includes(k));
+                const isFinish = (d, section) => String(section || '').trim().toLowerCase() === 'finishing';
+                const appLines = line==='All'?['1','2','3','4']:[line];
+
+                function yearMetrics(yearStr) {
+                    const yData = globalData.filter(r => {
+                        const l = String(r['Line']||'').trim();
+                        const ym = getYYYYMM(r); const y = String(r['Year']||'').trim();
+                        return appLines.includes(l) && (y===yearStr||(ym&&ym.startsWith(yearStr)));
+                    });
+                    const months = new Set();
+                    yData.forEach(r => { const ym=getYYYYMM(r); if(ym) months.add(ym); });
+                    let trailers=0;
+                    Array.from(months).forEach(ym=>{ appLines.forEach(l=>{ trailers+=getTrailerCount(ym,l); }); });
+                    let total=0,weld=0,finish=0;
+                    yData.forEach(r => {
+                        const q=parseFloat(r['Qty.'])||1, d=String(r['Quality Defect']||'').trim();
+                        const s=String(r['Section of Line']||'').trim();
+                        total+=q; if(isWeld(d)) weld+=q; if(isFinish(d,s)) finish+=q;
+                    });
+                    const fmt = (n,t) => t>0?(n/t).toFixed(2):'—';
+                    return { trailers, avgAll:fmt(total,trailers), avgWeld:fmt(weld,trailers), avgFinish:fmt(finish,trailers),
+                             rawAll:trailers>0?total/trailers:null, rawWeld:trailers>0?weld/trailers:null, rawFinish:trailers>0?finish/trailers:null };
+                }
+
+                // 2025 values come from hardcoded lineConfig — single source of truth
+                const _lc = lineConfig[line] || lineConfig['All'];
+                const y25 = { trailers: null,
+                              avgAll:    _lc.avg.toFixed(2),    avgWeld:    _lc.weld.toFixed(2),    avgFinish:    _lc.finish.toFixed(2),
+                              rawAll:    _lc.avg,               rawWeld:    _lc.weld,               rawFinish:    _lc.finish };
+                return { y26: yearMetrics('2026'), y25 };
+            }
+
+            const lineCompData = buildLineCompData();
+            const now = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+            const sections = [];
+
+            for (const line of linesToRender) {
+                const sel = lineChartSelections[line] || new Set();
+                if (sel.size === 0) continue;
+                const lineLabel = line==='All'?'Plant Total':`Line ${line}`;
+                const lineSectionImgs = {};
+
+                for (const chartType of ['weeklyTrend','monthlyTrend','category','operator','section','location']) {
+                    if (sel.has(chartType)) {
+                        lineSectionImgs[chartType] = await renderOffscreenChart(chartType, line, tf, month);
+                    }
+                }
+
+                let kpiHtml = '';
+                if (sel.has('kpis')) {
+                    const kpi = getKpis(line);
+                    function yoyBadge(cur, prev) {
+                        if (cur===null||prev===null||prev===0) return '';
+                        const diff=cur-prev, pct=Math.abs(diff/prev*100).toFixed(1);
+                        const good=diff<0, arrow=diff<0?'▼':'▲';
+                        const col=good?'background:#dcfce7;color:#15803d':'background:#fee2e2;color:#b91c1c';
+                        return `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px;${col}">${arrow} ${Math.abs(diff).toFixed(2)} (${pct}%)</span>`;
+                    }
+                    kpiHtml = `<div style="display:flex;gap:10px;margin-bottom:12px;">
+                        <div style="flex:1;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;">
+                            <div style="font-size:10px;color:#6b7280;margin-bottom:4px;">Weld Defects / Trailer</div>
+                            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                                <span style="font-size:18px;font-weight:800;color:#111827;">${kpi.y26.avgWeld}</span>
+                                <span style="font-size:12px;color:#9ca3af;">2025: ${kpi.y25.avgWeld}</span>
+                            </div>
+                            <div style="margin-top:4px;">${yoyBadge(kpi.y26.rawWeld,kpi.y25.rawWeld)}</div>
+                        </div>
+                        <div style="flex:1;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:10px 12px;">
+                            <div style="font-size:10px;color:#6b7280;margin-bottom:4px;">Finishing Defects / Trailer</div>
+                            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                                <span style="font-size:18px;font-weight:800;color:#111827;">${kpi.y26.avgFinish}</span>
+                                <span style="font-size:12px;color:#9ca3af;">2025: ${kpi.y25.avgFinish}</span>
+                            </div>
+                            <div style="margin-top:4px;">${yoyBadge(kpi.y26.rawFinish,kpi.y25.rawFinish)}</div>
+                        </div>
+                        <div style="flex:1;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:10px 12px;">
+                            <div style="font-size:10px;color:#6b7280;margin-bottom:4px;">Overall Avg / Trailer</div>
+                            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+                                <span style="font-size:18px;font-weight:800;color:#111827;">${kpi.y26.avgAll}</span>
+                                <span style="font-size:12px;color:#9ca3af;">2025: ${kpi.y25.avgAll}</span>
+                            </div>
+                            <div style="margin-top:4px;">${yoyBadge(kpi.y26.rawAll,kpi.y25.rawAll)}</div>
+                        </div>
+                    </div>`;
+                }
+                function lineYoyBadge(cur, prev) {
+                    if (cur===null||prev===null||prev===0) return '';
+                    const diff=cur-prev, pct=Math.abs(diff/prev*100).toFixed(1);
+                    const good=diff<0, arrow=diff<0?'▼':'▲';
+                    const bg=good?'#dcfce7':'#fee2e2', col=good?'#15803d':'#b91c1c';
+                    const lbl=good?'vs 2025 ✓ Improved':'vs 2025 ✗ Higher';
+                    return `<div style="margin-top:6px;"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:${bg};color:${col};">${arrow} ${Math.abs(diff).toFixed(2)} (${pct}%)</span> <span style="font-size:10px;color:#6b7280;">${lbl}</span></div>`;
+                }
+                const lineKpi = getKpis(line);
+                const lineKpis = {
+                    y26: lineKpi.y26,
+                    y25: lineKpi.y25,
+                    weldBadge:   lineYoyBadge(lineKpi.y26.rawWeld,   lineKpi.y25.rawWeld),
+                    finishBadge: lineYoyBadge(lineKpi.y26.rawFinish, lineKpi.y25.rawFinish),
+                    overallBadge:lineYoyBadge(lineKpi.y26.rawAll,    lineKpi.y25.rawAll),
+                };
+                sections.push({ lineLabel, lineSectionImgs, kpiHtml, lineKpis });
+            }
+
+            // Plant-wide line comp image
+            let plantLineCompImg = '';
+            if (includeLineComp) {
+                plantLineCompImg = await renderOffscreenChart('lineComp', 'All', tf, month);
+            }
+
+            // Build print HTML — plant section is inlined in the first-page wrapper in the template
+            // sectionsBody holds only the per-line sections
+            let sectionsBody = '';
+
+            for (const sec of sections) {
+                sectionsBody += `<div class="line-section">
+                    <div class="line-header">${sec.lineLabel}</div>`;
+                const imgs = sec.lineSectionImgs;
+
+                // Weekly trend gets the 3 YoY KPI cards above it
+                if (imgs['weeklyTrend']) {
+                    sectionsBody += `<div class="row" style="margin-bottom:8px;">
+                        <div class="col kpi-card kpi-weld">
+                            <div class="kpi-icon">⚡</div>
+                            <div class="kpi-body">
+                                <div class="kpi-label">Missed + Rejected Welds / Trailer</div>
+                                <div class="kpi-values">
+                                    <span class="kpi-main">${sec.lineKpis.y26.avgWeld}</span>
+                                    <span class="kpi-prev">2025: ${sec.lineKpis.y25.avgWeld}</span>
+                                </div>
+                                ${sec.lineKpis.weldBadge}
+                            </div>
+                        </div>
+                        <div class="col kpi-card kpi-finish">
+                            <div class="kpi-icon">🎨</div>
+                            <div class="kpi-body">
+                                <div class="kpi-label">Finishing Defects / Trailer</div>
+                                <div class="kpi-values">
+                                    <span class="kpi-main">${sec.lineKpis.y26.avgFinish}</span>
+                                    <span class="kpi-prev">2025: ${sec.lineKpis.y25.avgFinish}</span>
+                                </div>
+                                ${sec.lineKpis.finishBadge}
+                            </div>
+                        </div>
+                        <div class="col kpi-card kpi-overall">
+                            <div class="kpi-icon">📊</div>
+                            <div class="kpi-body">
+                                <div class="kpi-label">Overall Avg Defects / Trailer</div>
+                                <div class="kpi-values">
+                                    <span class="kpi-main">${sec.lineKpis.y26.avgAll}</span>
+                                    <span class="kpi-prev">2025: ${sec.lineKpis.y25.avgAll}</span>
+                                </div>
+                                ${sec.lineKpis.overallBadge}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" style="margin-bottom:12px;">
+                        <div class="col"><img src="${imgs['weeklyTrend']}"/></div>
+                        ${imgs['monthlyTrend'] ? `<div class="col"><img src="${imgs['monthlyTrend']}"/></div>` : ''}
+                    </div>`;
+                } else if (imgs['monthlyTrend']) {
+                    sectionsBody += `<div class="row"><div class="col"><img src="${imgs['monthlyTrend']}"/></div></div>`;
+                }
+
+                // Remaining pairs (category/operator, section/location)
+                const remainingPairs = [['category','operator'],['section','location']];
+                for (const [a,b] of remainingPairs) {
+                    const iA=imgs[a], iB=imgs[b];
+                    if (iA||iB) {
+                        sectionsBody += `<div class="row">`;
+                        if(iA) sectionsBody+=`<div class="col"><img src="${iA}"/></div>`;
+                        if(iB) sectionsBody+=`<div class="col"><img src="${iB}"/></div>`;
+                        sectionsBody+=`</div>`;
+                    }
+                }
+                sectionsBody += `</div>`;
+            }
+
+            const printWindow = window.open('','_blank');
+            if (!printWindow) { showToast("Pop-ups blocked. Please allow pop-ups.", true); return; }
+
+            // Pre-build first page content as plain string (avoids nested template literal issues)
+            let firstPageContent = '';
+            if (includeLineComp && plantLineCompImg) {
+                firstPageContent = buildYoYKpiHtml()
+                    + '<img src="' + plantLineCompImg + '" style="width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px;padding:6px;background:white;display:block;" />';
+            }
+
+            printWindow.document.open();
+            printWindow.document.write(`<!DOCTYPE html>
+<html><head><title>${title}</title>
+<style>
+    @page { size: ${orientation}; margin: 0.5in; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: white; color: #111827; }
+    .report-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
+    .report-title { font-size: 18px; font-weight: 800; color: #1e3a5f; }
+    .report-meta { font-size: 10px; color: #6b7280; text-align: right; line-height: 1.6; }
+    .first-page { page-break-inside: avoid; }
+    .line-section { margin-bottom: 22px; page-break-inside: avoid; }
+    .line-header { font-size: 14px; font-weight: 800; color: #1e3a5f; background: #f1f5f9; border-left: 4px solid #4f46e5; padding: 7px 12px; border-radius: 4px; margin-bottom: 10px; }
+    .row { display: flex; gap: 10px; margin-bottom: 10px; page-break-inside: avoid; }
+    .col { flex: 1; }
+    img { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px; background: white; display: block; }
+    .kpi-card { display:flex; align-items:flex-start; gap:8px; border-radius:8px; padding:9px 11px; border:1px solid; }
+    .kpi-weld    { background:#fff7ed; border-color:#fed7aa; }
+    .kpi-finish  { background:#f5f3ff; border-color:#ddd6fe; }
+    .kpi-overall { background:#ecfdf5; border-color:#a7f3d0; }
+    .kpi-icon  { font-size:15px; line-height:1; margin-top:1px; flex-shrink:0; }
+    .kpi-body  { flex:1; min-width:0; }
+    .kpi-label { font-size:9px; font-weight:600; color:#374151; margin-bottom:4px; }
+    .kpi-values { display:flex; align-items:baseline; justify-content:space-between; gap:4px; }
+    .kpi-main  { font-size:17px; font-weight:800; color:#111827; }
+    .kpi-prev  { font-size:10px; color:#9ca3af; }
+</style>
+</head><body>
+<div class="first-page">
+<div class="report-header">
+    <div class="report-title">${title}</div>
+    <div class="report-meta"><div>Timeframe: ${tfLabels[tf]}</div><div>Generated: ${now}</div></div>
+</div>
+${firstPageContent}
+</div>
+${sectionsBody}
+<script>setTimeout(()=>{window.print();window.close();},600);<\/script>
+</body></html>`);
+            printWindow.document.close();
+        }
+
+        // ----- DOWNLOADING / PRINTING ----- //
+        function downloadChart(chartId, filename) {
+            const charts = { 'defectsChart': myChart, 'monthlyChart': monthlyChart, 'lineCompChart': lineCompChart, 'categoryChart': catChart, 'operatorChart': operatorChart, 'sectionChart': sectionChart, 'locationChart': locationChart };
+            if (!charts[chartId]) return;
+            const link = document.createElement('a');
+            const filePrefix = currentLine === 'All' ? 'PlantTotal' : `Line${currentLine}`;
+            link.download = `${filePrefix}_${filename}.png`;
+            link.href = charts[chartId].toBase64Image();
+            link.click();
+        }
+
+        function prepareAndPrint() {
+            if (!myChart || !monthlyChart) return;
+            try {
+                const imgWeekly = myChart.toBase64Image();
+                const imgMonthly = monthlyChart.toBase64Image();
+                const imgLineComp = lineCompChart ? lineCompChart.toBase64Image() : '';
+                const imgCat = catChart ? catChart.toBase64Image() : '';
+                const imgOp = operatorChart ? operatorChart.toBase64Image() : '';
+                const imgSec = sectionChart ? sectionChart.toBase64Image() : '';
+                const imgLoc = locationChart ? locationChart.toBase64Image() : '';
+
+                const printTitle = currentLine === 'All' ? 'Plant Total' : `Line ${currentLine}`;
+                const tfLabels = { '2026': '2026 YTD', '6mo': 'Past 6 Months', '2025': '2025 Full Year', 'AllTime': 'All Time' };
+
+                // Build YoY KPI cards for full-page report using live DOM values
+                const w26  = document.getElementById('kpiWeld26')?.innerText   || '—';
+                const w25  = document.getElementById('kpiWeld25')?.innerText   || '—';
+                const f26  = document.getElementById('kpiFinish26')?.innerText || '—';
+                const f25  = document.getElementById('kpiFinish25')?.innerText || '—';
+                const a26  = document.getElementById('kpiAvgDefects')?.innerText || '—';
+                const a25  = document.getElementById('kpiAvg25')?.innerText    || '—';
+                const wb   = document.getElementById('yoyWeldBadge');
+                const fb   = document.getElementById('yoyFinishBadge');
+                const ab   = document.getElementById('yoyAvgBadge');
+                const wl   = document.getElementById('yoyWeldLabel')?.innerText   || '';
+                const fl   = document.getElementById('yoyFinishLabel')?.innerText || '';
+                const al   = document.getElementById('yoyAvgLabel')?.innerText    || '';
+
+                function cloneBadge(el, lbl) {
+                    if (!el || el.classList.contains('hidden')) return '';
+                    const bg  = el.classList.contains('bg-emerald-100') ? '#dcfce7' : '#fee2e2';
+                    const col = el.classList.contains('text-emerald-700') ? '#15803d' : '#b91c1c';
+                    return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:${bg};color:${col};">${el.innerText}</span>
+                            <span style="font-size:10px;color:#6b7280;margin-left:5px;">${lbl}</span>`;
+                }
+
+                function kpiCard(icon, iconBg, iconColor, borderColor, label, v26, v25, badgeHtml) {
+                    return `<div style="flex:1;background:#fff;border:1px solid ${borderColor};border-radius:12px;padding:16px 18px;">
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                            <div style="background:${iconBg};padding:8px;border-radius:10px;font-size:16px;line-height:1;">${icon}</div>
+                            <span style="font-size:12px;font-weight:600;color:#374151;">${label}</span>
+                        </div>
+                        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:10px;">
+                            <div>
+                                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">2026 YTD</div>
+                                <div style="font-size:24px;font-weight:800;color:#111827;">${v26}</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">2025 Full Year</div>
+                                <div style="font-size:18px;font-weight:700;color:#6b7280;">${v25}</div>
+                            </div>
+                        </div>
+                        <div>${badgeHtml}</div>
+                    </div>`;
+                }
+
+                const yoyCardsHtml = `<div style="display:flex;gap:14px;margin-bottom:14px;">
+                    ${kpiCard('⚡','#ffedd5','#ea580c','#fed7aa','Missed + Rejected Welds / Trailer', w26, w25, cloneBadge(wb, wl))}
+                    ${kpiCard('🎨','#ede9fe','#7c3aed','#ddd6fe','Finishing Defects / Trailer',        f26, f25, cloneBadge(fb, fl))}
+                    ${kpiCard('📊','#d1fae5','#059669','#a7f3d0','Overall Avg Defects / Trailer',      a26, a25, cloneBadge(ab, al))}
+                </div>`;
+
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                    printWindow.document.open();
+                    printWindow.document.write(`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>Print - Quality Report</title>
+                            <style>
+                                @page { size: landscape; margin: 0.5in; }
+                                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: white; color: black; margin: 0; padding: 0; }
+                                h2 { margin: 0 0 16px 0; font-size: 22px; font-weight: 800; color: #1e3a5f; }
+                                .row { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 20px; page-break-inside: avoid; }
+                                .col { flex: 1; text-align: center; }
+                                img { max-width: 100%; max-height: 400px; height: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px; box-sizing: border-box; }
+                                .full-width { width: 100%; margin-bottom: 16px; }
+                            </style>
+                        </head>
+                        <body>
+                            <h2>${printTitle} Quality Report – ${tfLabels[currentTimeframe]}</h2>
+
+                            <div class="row">
+                                <div class="col"><img src="${imgWeekly}" /></div>
+                                <div class="col"><img src="${imgMonthly}" /></div>
+                            </div>
+
+                            ${yoyCardsHtml}
+                            <div class="full-width"><img src="${imgLineComp}" /></div>
+                            
+                            <div class="row" style="page-break-before: always;">
+                                <div class="col"><img src="${imgCat}" /></div>
+                                <div class="col"><img src="${imgOp}" /></div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col"><img src="${imgSec}" /></div>
+                                <div class="col"><img src="${imgLoc}" /></div>
+                            </div>
+                            
+                            <script>setTimeout(() => { window.print(); window.close(); }, 500);<\/script>
+                        </body>
+                        </html>
+                    `);
+                    printWindow.document.close();
+                } else {
+                    showToast("Pop-ups blocked. Please allow pop-ups to print the report.", true);
+                }
+            } catch (err) { console.error(err); }
+        }
+    </script>
+</body>
+</html>
