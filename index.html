@@ -1708,6 +1708,11 @@
             const now = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
             const title = `Value Stream Quality Report – ${tfStr}`;
 
+            // Open window BEFORE any awaits so browser treats it as user-initiated
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) { showToast('Pop-ups blocked. Please allow pop-ups.', true); return; }
+            printWindow.document.write('<html><body style="font-family:sans-serif;padding:40px;color:#374151;"><p>⏳ Building Value Stream Report… please wait.</p></body></html>');
+
             showToast('Building Value Stream Report…');
 
             const [
@@ -1768,9 +1773,6 @@
                     </div>
                 </div>`;
             }
-
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) { showToast('Pop-ups blocked. Please allow pop-ups.', true); return; }
 
             printWindow.document.open();
             printWindow.document.write(`<!DOCTYPE html>
