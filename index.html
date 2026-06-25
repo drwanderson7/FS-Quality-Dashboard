@@ -1708,12 +1708,7 @@
             const now = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
             const title = `Value Stream Quality Report – ${tfStr}`;
 
-            // Open window BEFORE any awaits so browser treats it as user-initiated
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) { showToast('Pop-ups blocked. Please allow pop-ups.', true); return; }
-            printWindow.document.write('<html><body style="font-family:sans-serif;padding:40px;color:#374151;"><p>⏳ Building Value Stream Report… please wait.</p></body></html>');
-
-            showToast('Building Value Stream Report…');
+            showToast('Building Value Stream Report… please wait.');
 
             let lineCompImg, plantMonthlyImg,
                 l1WeeklyImg, l1CatImg,
@@ -1740,10 +1735,8 @@
                     renderOffscreenChart('category',     '4',   tf, month),
                 ]);
             } catch(err) {
-                printWindow.document.open();
-                printWindow.document.write('<html><body style="font-family:sans-serif;padding:40px;color:#b91c1c;"><h2>Report Error</h2><pre style="background:#fef2f2;padding:16px;border-radius:8px;">' + err.stack + '</pre></body></html>');
-                printWindow.document.close();
                 showToast('Report error: ' + err.message, true);
+                console.error('Value Stream Report error:', err);
                 return;
             }
 
@@ -1787,8 +1780,7 @@
                 </div>`;
             }
 
-            printWindow.document.open();
-            printWindow.document.write(`<!DOCTYPE html>
+            const vsHtml = `<!DOCTYPE html>
 <html><head><title>${title}</title>
 <style>
     @page { size: landscape; margin: 0.5in; }
@@ -1823,9 +1815,21 @@
     ${lineSection('3', l3WeeklyImg, l3CatImg)}
     ${lineSection('4', l4WeeklyImg, l4CatImg)}
 </div>
-<script>setTimeout(()=>{window.print();window.close();},700);<\/script>
-</body></html>`);
-            printWindow.document.close();
+<script>window.onload = function(){ window.print(); };<\/script>
+</body></html>`;
+
+            // Use blob URL to avoid popup blocker — works on file:// and https://
+            const blob = new Blob([vsHtml], { type: 'text/html' });
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+            showToast('Value Stream Report ready!');
         }
 
         // Renders a chart offscreen for the given line and returns a base64 PNG promise
