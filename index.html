@@ -1272,14 +1272,14 @@
                         return { text: `${good ? '▼' : '▲'} ${Math.abs(diff).toFixed(2)} (${pct}%)`, good };
                     }
 
-                    const wb = getBadge(m26.avgWeld,   m25.avgWeld);
-                    const fb = getBadge(m26.avgFinish, m25.avgFinish);
-                    const ab = getBadge(avg26ForBadge, m25.avgAll);
+                    const wb = getBadge(mPrimary.avgWeld,   mPrior.avgWeld);
+                    const fb = getBadge(mPrimary.avgFinish, mPrior.avgFinish);
+                    const ab = getBadge(avg26ForBadge, mPrior.avgAll);
 
                     strip.innerHTML =
-                        miniCard('⚡', 'Welds / Trailer',    m26.avgWeld,   m25.avgWeld,   wb.text, wb.good) +
-                        miniCard('🎨', 'Finishing / Trailer', m26.avgFinish, m25.avgFinish, fb.text, fb.good) +
-                        miniCard('📊', 'Overall / Trailer',  avg26ForBadge, m25.avgAll,    ab.text, ab.good);
+                        miniCard('⚡', 'Welds / Trailer',    mPrimary.avgWeld,   mPrior.avgWeld,   wb.text, wb.good) +
+                        miniCard('🎨', 'Finishing / Trailer', mPrimary.avgFinish, mPrior.avgFinish, fb.text, fb.good) +
+                        miniCard('📊', 'Overall / Trailer',  avg26ForBadge, mPrior.avgAll,    ab.text, ab.good);
                 })();
             })();
 
