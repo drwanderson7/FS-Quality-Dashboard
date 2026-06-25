@@ -2009,6 +2009,41 @@
             return data;
         }
 
+        // Top-level helper — used by both generateCustomReport and generateValueStreamReport
+        function getKpis(line) {
+            const weldKw   = ['weld', 'missed weld', 'rejected weld', 'bad weld'];
+            const isWeld   = d => weldKw.some(k => d.toLowerCase().includes(k));
+            const isFinish = (d, section) => String(section || '').trim().toLowerCase() === 'finishing';
+            const appLines = line==='All'?['1','2','3','4']:[line];
+
+            function yearMetrics(yearStr) {
+                const yData = globalData.filter(r => {
+                    const l = String(r['Line']||'').trim();
+                    const ym = getYYYYMM(r); const y = String(r['Year']||'').trim();
+                    return appLines.includes(l) && (y===yearStr||(ym&&ym.startsWith(yearStr)));
+                });
+                const months = new Set();
+                yData.forEach(r => { const ym=getYYYYMM(r); if(ym) months.add(ym); });
+                let trailers=0;
+                Array.from(months).forEach(ym=>{ appLines.forEach(l=>{ trailers+=getTrailerCount(ym,l); }); });
+                let total=0,weld=0,finish=0;
+                yData.forEach(r => {
+                    const q=parseFloat(r['Qty.'])||1, d=String(r['Quality Defect']||'').trim();
+                    const s=String(r['Section of Line']||'').trim();
+                    total+=q; if(isWeld(d)) weld+=q; if(isFinish(d,s)) finish+=q;
+                });
+                const fmt = (n,t) => t>0?(n/t).toFixed(2):'—';
+                return { trailers, avgAll:fmt(total,trailers), avgWeld:fmt(weld,trailers), avgFinish:fmt(finish,trailers),
+                         rawAll:trailers>0?total/trailers:null, rawWeld:trailers>0?weld/trailers:null, rawFinish:trailers>0?finish/trailers:null };
+            }
+
+            const _lc = lineConfig[line] || lineConfig['All'];
+            const y25 = { trailers: null,
+                          avgAll: _lc.avg.toFixed(2),    avgWeld: _lc.weld.toFixed(2),    avgFinish: _lc.finish.toFixed(2),
+                          rawAll: _lc.avg,               rawWeld: _lc.weld,               rawFinish: _lc.finish };
+            return { y26: yearMetrics('2026'), y25 };
+        }
+
         async function generateCustomReport() {
             if (!globalData || globalData.length === 0) { showToast("No data loaded.", true); return; }
 
@@ -2140,41 +2175,6 @@
                         <div class="insight-val" style="color:${d.color};">${d.val}</div>
                         <div class="insight-sub">${d.sub}</div>
                     </div>`).join('')}</div>`;
-            }
-
-            function getKpis(line) {
-                const weldKw   = ['weld', 'missed weld', 'rejected weld', 'bad weld'];
-                const isWeld   = d => weldKw.some(k => d.toLowerCase().includes(k));
-                const isFinish = (d, section) => String(section || '').trim().toLowerCase() === 'finishing';
-                const appLines = line==='All'?['1','2','3','4']:[line];
-
-                function yearMetrics(yearStr) {
-                    const yData = globalData.filter(r => {
-                        const l = String(r['Line']||'').trim();
-                        const ym = getYYYYMM(r); const y = String(r['Year']||'').trim();
-                        return appLines.includes(l) && (y===yearStr||(ym&&ym.startsWith(yearStr)));
-                    });
-                    const months = new Set();
-                    yData.forEach(r => { const ym=getYYYYMM(r); if(ym) months.add(ym); });
-                    let trailers=0;
-                    Array.from(months).forEach(ym=>{ appLines.forEach(l=>{ trailers+=getTrailerCount(ym,l); }); });
-                    let total=0,weld=0,finish=0;
-                    yData.forEach(r => {
-                        const q=parseFloat(r['Qty.'])||1, d=String(r['Quality Defect']||'').trim();
-                        const s=String(r['Section of Line']||'').trim();
-                        total+=q; if(isWeld(d)) weld+=q; if(isFinish(d,s)) finish+=q;
-                    });
-                    const fmt = (n,t) => t>0?(n/t).toFixed(2):'—';
-                    return { trailers, avgAll:fmt(total,trailers), avgWeld:fmt(weld,trailers), avgFinish:fmt(finish,trailers),
-                             rawAll:trailers>0?total/trailers:null, rawWeld:trailers>0?weld/trailers:null, rawFinish:trailers>0?finish/trailers:null };
-                }
-
-                // 2025 values from hardcoded lineConfig — single source of truth
-                const _lc = lineConfig[line] || lineConfig['All'];
-                const y25 = { trailers: null,
-                              avgAll: _lc.avg.toFixed(2),    avgWeld: _lc.weld.toFixed(2),    avgFinish: _lc.finish.toFixed(2),
-                              rawAll: _lc.avg,               rawWeld: _lc.weld,               rawFinish: _lc.finish };
-                return { y26: yearMetrics('2026'), y25 };
             }
 
             const lineCompData = buildLineCompData();
